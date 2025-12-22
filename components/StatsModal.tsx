@@ -26,31 +26,6 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
             return diffMinutes / 60;
         };
 
-        // Calculate pay for a single shift based on labor standards logic provided
-        const calculateShiftPay = (netDuration: number) => {
-            if (netDuration <= 0) return 0;
-            
-            let pay = 0;
-            
-            // Standard hours (First 8 hours)
-            const standardHours = Math.min(netDuration, 8);
-            pay += standardHours * BASE_HOURLY_WAGE;
-
-            // Overtime Tier 1 (Next 2 hours, 9th and 10th)
-            if (netDuration > 8) {
-                const ot1Hours = Math.min(netDuration - 8, 2);
-                pay += ot1Hours * BASE_HOURLY_WAGE * 1.34;
-            }
-
-            // Overtime Tier 2 (After 10 hours)
-            if (netDuration > 10) {
-                const ot2Hours = netDuration - 10;
-                pay += ot2Hours * BASE_HOURLY_WAGE * 1.67;
-            }
-
-            return Math.round(pay);
-        };
-
         const employeeStats = employees.map(emp => {
             const empShifts = currentMonthShifts.filter(s => s.employeeId === emp.id);
             
@@ -60,6 +35,11 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
             let totalTasks = 0;
             let completedTasks = 0;
             
+            // New counters for hours breakdown
+            let totalNormalHours = 0;
+            let totalOt1Hours = 0; // 1.34x
+            let totalOt2Hours = 0; // 1.67x
+            
             empShifts.forEach(s => {
                 const grossDuration = calculateDuration(s.startTime, s.endTime);
                 const breakInHours = (s.breakDuration || 0) / 60;
@@ -68,7 +48,32 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
 
                 totalNetHours += netDuration;
                 totalBreakHours += breakInHours;
-                estimatedSalary += calculateShiftPay(netDuration);
+
+                // Calculate breakdown for this shift
+                let remaining = netDuration;
+                
+                // Tier 1: Normal (First 8 hours)
+                const normal = Math.min(remaining, 8);
+                remaining -= normal;
+                
+                // Tier 2: OT1 (Next 2 hours, 1.34x)
+                const ot1 = Math.min(remaining, 2);
+                remaining -= ot1;
+                
+                // Tier 3: OT2 (Remaining hours, 1.67x)
+                const ot2 = Math.max(0, remaining);
+
+                // Accumulate totals
+                totalNormalHours += normal;
+                totalOt1Hours += ot1;
+                totalOt2Hours += ot2;
+
+                // Calculate Pay based on specific tiers
+                estimatedSalary += Math.round(
+                    (normal * BASE_HOURLY_WAGE) + 
+                    (ot1 * BASE_HOURLY_WAGE * 1.34) + 
+                    (ot2 * BASE_HOURLY_WAGE * 1.67)
+                );
 
                 totalTasks += s.tasks.length;
                 completedTasks += s.tasks.filter(t => t.isCompleted).length;
@@ -79,6 +84,9 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                 shiftCount: empShifts.length,
                 totalNetHours: totalNetHours,
                 totalBreakHours: totalBreakHours,
+                totalNormalHours: totalNormalHours,
+                totalOt1Hours: totalOt1Hours,
+                totalOt2Hours: totalOt2Hours,
                 estimatedSalary: estimatedSalary,
                 taskCompletionRate: totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100)
             };
@@ -95,7 +103,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-[#064e3b] bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#fcfaf8] rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 border-4 border-[#e7e5e4]">
+            <div className="bg-[#fcfaf8] rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in duration-200 border-4 border-[#e7e5e4]">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4]">
                     <div className="flex items-center gap-3">
@@ -162,59 +170,68 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                     {/* Employee Table */}
                     <div className="bg-white rounded-xl border border-[#e7e5e4] shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse min-w-[600px]">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
                                 <thead>
                                     <tr className="bg-[#fafaf9] border-b border-[#e7e5e4] text-[#57534e] text-sm uppercase tracking-wider">
-                                        <th className="px-6 py-4 font-bold">夥伴姓名</th>
-                                        <th className="px-6 py-4 font-bold text-center">排班次數</th>
-                                        <th className="px-6 py-4 font-bold text-center">淨工時 (hr)</th>
-                                        <th className="px-6 py-4 font-bold text-center">休息 (hr)</th>
-                                        <th className="px-6 py-4 font-bold text-center text-rose-700">預估薪資</th>
-                                        <th className="px-6 py-4 font-bold text-center">任務達成率</th>
+                                        <th className="px-4 py-4 font-bold sticky left-0 bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">夥伴姓名</th>
+                                        <th className="px-4 py-4 font-bold text-center">排班數</th>
+                                        <th className="px-4 py-4 font-bold text-center bg-gray-50 text-gray-700 border-x border-gray-200">淨工時 (hr)</th>
+                                        <th className="px-4 py-4 font-bold text-center bg-emerald-50 text-emerald-800">正常 (1.0)</th>
+                                        <th className="px-4 py-4 font-bold text-center bg-amber-50 text-amber-800">加班 (1.34)</th>
+                                        <th className="px-4 py-4 font-bold text-center bg-rose-50 text-rose-800">加班 (1.67)</th>
+                                        <th className="px-4 py-4 font-bold text-center">休息 (hr)</th>
+                                        <th className="px-4 py-4 font-bold text-center text-rose-700 border-l border-gray-200">預估薪資</th>
+                                        <th className="px-4 py-4 font-bold text-center">達成率</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#e7e5e4]">
                                     {stats.employeeStats.map((emp) => (
                                         <tr key={emp.id} className="hover:bg-[#fafaf9] transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <img src={emp.avatar} alt={emp.name} className="w-10 h-10 rounded-full shadow-sm" />
-                                                    <span className="font-bold text-[#44403c]">{emp.name}</span>
+                                            <td className="px-4 py-4 sticky left-0 bg-white group-hover:bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                                <div className="flex items-center gap-2">
+                                                    <img src={emp.avatar} alt={emp.name} className="w-8 h-8 rounded-full shadow-sm" />
+                                                    <span className="font-bold text-[#44403c] whitespace-nowrap">{emp.name}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="inline-block px-3 py-1 bg-stone-100 text-stone-700 rounded-full text-sm font-medium">
+                                            <td className="px-4 py-4 text-center">
+                                                <span className="inline-block px-2.5 py-0.5 bg-stone-100 text-stone-700 rounded-full text-xs font-medium">
                                                     {emp.shiftCount}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="font-bold text-[#064e3b] text-lg">
-                                                    {emp.totalNetHours.toFixed(1)}
-                                                </span>
+                                            <td className="px-4 py-4 text-center font-bold text-[#44403c] bg-gray-50/50 border-x border-[#e7e5e4]">
+                                                {emp.totalNetHours.toFixed(1)}
                                             </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <div className="flex items-center justify-center gap-1 text-gray-500">
-                                                    <Coffee size={14} />
-                                                    <span>{emp.totalBreakHours.toFixed(1)}</span>
+                                            <td className="px-4 py-4 text-center text-emerald-700 bg-emerald-50/30">
+                                                {emp.totalNormalHours > 0 ? emp.totalNormalHours.toFixed(1) : '-'}
+                                            </td>
+                                            <td className="px-4 py-4 text-center text-amber-700 bg-amber-50/30 font-medium">
+                                                {emp.totalOt1Hours > 0 ? emp.totalOt1Hours.toFixed(1) : '-'}
+                                            </td>
+                                            <td className="px-4 py-4 text-center text-rose-700 bg-rose-50/30 font-bold">
+                                                {emp.totalOt2Hours > 0 ? emp.totalOt2Hours.toFixed(1) : '-'}
+                                            </td>
+                                            <td className="px-4 py-4 text-center">
+                                                <div className="flex items-center justify-center gap-1 text-gray-400 text-xs">
+                                                    <span>{emp.totalBreakHours > 0 ? emp.totalBreakHours.toFixed(1) : '-'}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="font-bold text-rose-600 text-lg">
+                                            <td className="px-4 py-4 text-center border-l border-[#e7e5e4]">
+                                                <span className="font-bold text-rose-600">
                                                     ${emp.estimatedSalary.toLocaleString()}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-4 py-4">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <div className="w-24 bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                                    <div className="w-16 bg-gray-200 rounded-full h-2 overflow-hidden">
                                                         <div 
-                                                            className={`h-2.5 rounded-full ${
+                                                            className={`h-2 rounded-full ${
                                                                 emp.taskCompletionRate === 100 ? 'bg-emerald-500' : 
                                                                 emp.taskCompletionRate > 70 ? 'bg-amber-400' : 'bg-red-400'
                                                             }`} 
                                                             style={{ width: `${emp.taskCompletionRate}%` }}
                                                         ></div>
                                                     </div>
-                                                    <span className="text-xs font-medium text-gray-600 w-8 text-right">{emp.taskCompletionRate}%</span>
+                                                    <span className="text-[10px] font-medium text-gray-500 w-6 text-right">{emp.taskCompletionRate}%</span>
                                                 </div>
                                             </td>
                                         </tr>
