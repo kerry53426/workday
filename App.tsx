@@ -563,6 +563,10 @@ const App: React.FC = () => {
                         {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : (systemSettings.isCloudSyncEnabled ? <Cloud size={20} /> : <CloudOff size={20} />)}
                     </button>
 
+                    <button onClick={() => setIsStatsOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="工時薪資統計">
+                        <Calculator size={20} />
+                    </button>
+
                     <button onClick={() => setIsEmployeeManagerOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴資料管理">
                         <Users size={20} />
                     </button>
