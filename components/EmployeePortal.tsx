@@ -103,33 +103,33 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     const getEmployeeAvatar = (id: string) => allEmployees.find(e => e.id === id)?.avatar;
 
     return (
-        <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+        <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 safe-area-bottom">
             {/* Header Card */}
-            <div className="bg-white rounded-2xl p-5 shadow-md border-l-8 border-[#d97706] flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-md border-l-8 border-[#d97706] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 sm:gap-4">
                     <img 
                         src={employee.avatar} 
                         alt={employee.name} 
-                        className="w-16 h-16 rounded-full object-cover border-4 border-[#fffbeb] shadow-lg"
+                        className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-4 border-[#fffbeb] shadow-lg"
                     />
                     <div>
-                        <h2 className="text-xl font-bold text-[#44403c]">早安，{employee.name}</h2>
+                        <h2 className="text-lg sm:text-xl font-bold text-[#44403c]">早安，{employee.name}</h2>
                         <p className="text-xs text-[#78716c] mt-0.5">準備好迎接美好的一天了嗎？</p>
                     </div>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 items-end">
                     <button 
                         onClick={() => setIsPasswordModalOpen(true)}
-                        className="flex items-center gap-1.5 text-xs text-[#57534e] hover:text-[#d97706] transition-colors bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200"
+                        className="flex items-center gap-1.5 text-xs text-[#57534e] hover:text-[#d97706] transition-colors bg-gray-50 px-3 py-2 rounded-full border border-gray-200"
                     >
-                        <KeyRound size={14} /> 修改密碼
+                        <KeyRound size={14} /> <span className="hidden sm:inline">修改密碼</span>
                     </button>
                     <button 
                         onClick={onLogout}
-                        className="flex items-center justify-center gap-1 text-[#a8a29e] hover:text-red-500 transition-colors p-1"
+                        className="flex items-center justify-center gap-1 text-[#a8a29e] hover:text-red-500 transition-colors p-2 sm:p-1"
                         title="登出"
                     >
-                        <LogOut size={16} /> 登出
+                        <LogOut size={18} className="sm:w-4 sm:h-4" /> <span className="hidden sm:inline">登出</span>
                     </button>
                 </div>
             </div>
@@ -148,12 +148,12 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="請輸入新密碼 (至少4碼)"
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-[#064e3b] focus:border-transparent"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-[#064e3b] focus:border-transparent text-base"
                                 autoFocus
                             />
                             <div className="flex gap-2">
-                                <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="flex-1 py-2 text-gray-600 bg-gray-100 rounded-lg">取消</button>
-                                <button type="submit" className="flex-1 py-2 text-white bg-[#064e3b] rounded-lg hover:bg-[#065f46]">確認修改</button>
+                                <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="flex-1 py-3 sm:py-2 text-gray-600 bg-gray-100 rounded-lg">取消</button>
+                                <button type="submit" className="flex-1 py-3 sm:py-2 text-white bg-[#064e3b] rounded-lg hover:bg-[#065f46]">確認修改</button>
                             </div>
                         </form>
                     </div>
@@ -161,12 +161,12 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
             )}
 
             {/* Quick View: Next 14 Days Strip */}
-            <div className="bg-white rounded-xl shadow-sm border border-[#e7e5e4] p-4 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-[#e7e5e4] p-3 sm:p-4 overflow-hidden">
                 <div className="flex items-center gap-2 mb-3 text-[#57534e] font-bold text-sm">
                     <CalendarIcon size={16} className="text-[#d97706]" />
-                    未來兩週速覽 (點擊日期可跳轉)
+                    未來兩週速覽
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
+                <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x touch-pan-x">
                     {next14Days.map((day, i) => {
                         const dateStr = format(day, 'yyyy-MM-dd');
                         const hasShift = myUpcomingShifts.find(s => s.date === dateStr);
@@ -179,7 +179,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                 key={i} 
                                 onClick={() => hasShift && scrollToDate(dateStr)}
                                 disabled={!hasShift}
-                                className={`snap-start flex-shrink-0 w-14 h-20 rounded-xl flex flex-col items-center justify-center border transition-all ${
+                                className={`snap-start flex-shrink-0 w-14 h-20 sm:w-14 sm:h-20 rounded-xl flex flex-col items-center justify-center border transition-all ${
                                     hasShift 
                                     ? 'bg-[#ecfdf5] border-[#064e3b] shadow-sm cursor-pointer hover:bg-[#d1fae5] active:scale-95' 
                                     : isToday 
@@ -204,7 +204,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
 
             {/* TEAM TASKS SECTION (New) */}
             {teamShiftsToday.length > 0 && (
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 shadow-sm">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 sm:p-5 border border-blue-100 shadow-sm">
                     <div className="flex items-center gap-2 mb-4 text-[#1e3a8a] font-bold">
                         <Users size={20} />
                         <h3>今日夥伴動態 (互相支援)</h3>
@@ -228,23 +228,23 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                         </div>
                                     </div>
                                     
-                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                    <div className="space-y-3 max-h-40 overflow-y-auto pr-1">
                                         {shift.tasks.length === 0 && <p className="text-xs text-gray-400 italic">無任務</p>}
                                         {shift.tasks.map(task => (
                                             <div 
                                                 key={task.id} 
                                                 onClick={(e) => handleTaskClick(e, shift.id, task)}
-                                                className={`flex items-start gap-2 p-2 rounded cursor-pointer transition-colors border ${
+                                                className={`flex items-start gap-3 p-2 rounded cursor-pointer transition-colors border ${
                                                     task.isCompleted 
                                                     ? 'bg-gray-50 border-transparent' 
-                                                    : 'bg-white border-gray-200 hover:border-blue-300'
+                                                    : 'bg-white border-gray-200 hover:border-blue-300 active:bg-blue-50'
                                                 }`}
                                             >
                                                 <div className={`mt-0.5 ${task.isCompleted ? 'text-emerald-500' : 'text-gray-300'}`}>
-                                                    {task.isCompleted ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                                                    {task.isCompleted ? <CheckCircle2 size={20} /> : <Circle size={20} />}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className={`text-xs ${task.isCompleted ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                                    <p className={`text-sm ${task.isCompleted ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
                                                         {task.description}
                                                     </p>
                                                     {task.isCompleted && task.completedBy && task.completedBy !== shift.employeeId && (
@@ -341,7 +341,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                             </h4>
                                         </div>
                                         
-                                        <div className="space-y-2">
+                                        <div className="space-y-3">
                                             {shift.tasks.length === 0 && <p className="text-[#a8a29e] italic text-xs py-1">無指定任務</p>}
                                             {shift.tasks.map(task => (
                                                 <div 
@@ -350,11 +350,11 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                                     className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
                                                         task.isCompleted 
                                                             ? 'bg-[#f5f5f4] border-transparent opacity-70' 
-                                                            : 'bg-white border-[#e7e5e4] hover:border-[#d97706] hover:shadow-sm'
+                                                            : 'bg-white border-[#e7e5e4] hover:border-[#d97706] hover:shadow-sm active:bg-amber-50'
                                                     }`}
                                                 >
                                                     <div className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1]'}`}>
-                                                        {task.isCompleted ? <CheckCircle2 size={18} className="fill-emerald-50" /> : <Circle size={18} />}
+                                                        {task.isCompleted ? <CheckCircle2 size={20} className="fill-emerald-50" /> : <Circle size={20} />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <span className={`text-sm block leading-snug ${task.isCompleted ? 'text-[#a8a29e] line-through' : 'text-[#44403c]'}`}>
@@ -408,8 +408,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                     <textarea 
                         value={feedbackContent}
                         onChange={(e) => setFeedbackContent(e.target.value)}
-                        placeholder="有什麼想跟執行長說的嗎？不管是工作建議、心情分享，都歡迎留言..."
-                        className="w-full p-3 pr-12 rounded-lg border border-amber-200 bg-white/80 focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm min-h-[80px] resize-none"
+                        placeholder="有什麼想跟執行長說的嗎？..."
+                        className="w-full p-3 pr-12 rounded-lg border border-amber-200 bg-white/80 focus:ring-2 focus:ring-amber-500 focus:border-transparent text-base sm:text-sm min-h-[80px] resize-none"
                     />
                     <button 
                         onClick={handleSubmitFeedback}

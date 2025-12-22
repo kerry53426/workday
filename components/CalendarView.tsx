@@ -42,26 +42,27 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 <div className="bg-white p-1 rounded-lg border border-[#e7e5e4] shadow-sm flex items-center gap-1">
                     <button
                         onClick={() => setViewMode('grid')}
-                        className={`p-2 rounded-md transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'grid' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                        className={`p-1.5 sm:p-2 rounded-md transition-all flex items-center gap-2 text-xs sm:text-sm font-medium ${viewMode === 'grid' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                     >
                         <Grid3X3 size={16} />
-                        <span className="hidden sm:inline">週曆</span>
+                        <span className="inline">週曆</span>
                     </button>
                     <button
                         onClick={() => setViewMode('list')}
-                        className={`p-2 rounded-md transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'list' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                        className={`p-1.5 sm:p-2 rounded-md transition-all flex items-center gap-2 text-xs sm:text-sm font-medium ${viewMode === 'list' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                     >
                         <LayoutList size={16} />
-                        <span className="hidden sm:inline">清單</span>
+                        <span className="inline">清單</span>
                     </button>
                 </div>
             </div>
 
             {viewMode === 'grid' ? (
-                // GRID VIEW (Existing Logic)
+                // GRID VIEW
                 <div className="bg-white rounded-xl shadow-md border border-[#e7e5e4] overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <div className="min-w-[800px]">
+                    <div className="overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
+                        {/* Minimum width ensures grid doesn't squash on mobile, requiring horizontal scroll */}
+                        <div className="min-w-[700px] sm:min-w-[800px]">
                             {/* Header Row */}
                             <div className="grid grid-cols-7 border-b border-[#e7e5e4] bg-[#fafaf9]">
                                 {weekDays.map((day, i) => {
@@ -70,16 +71,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                     const staffCount = new Set(dailyShifts.map(s => s.employeeId)).size;
 
                                     return (
-                                        <div key={i} className={`p-4 text-center border-r border-[#e7e5e4] last:border-r-0 ${isToday ? 'bg-[#ecfdf5]' : ''}`}>
+                                        <div key={i} className={`p-2 sm:p-4 text-center border-r border-[#e7e5e4] last:border-r-0 ${isToday ? 'bg-[#ecfdf5]' : ''}`}>
                                             <div className="text-xs font-bold text-[#78716c] uppercase tracking-wider mb-1">
                                                 {dayNames[i]}
                                             </div>
-                                            <div className={`text-lg font-bold ${isToday ? 'text-[#059669]' : 'text-[#44403c]'}`}>
+                                            <div className={`text-base sm:text-lg font-bold ${isToday ? 'text-[#059669]' : 'text-[#44403c]'}`}>
                                                 {format(day, 'd')}
                                             </div>
                                             {staffCount > 0 && (
-                                                <div className="mt-2 flex justify-center">
-                                                    <span className="inline-flex items-center gap-1 bg-stone-200 text-stone-600 text-[10px] px-2 py-0.5 rounded-full font-bold" title="今日值班人數">
+                                                <div className="mt-1 sm:mt-2 flex justify-center">
+                                                    <span className="inline-flex items-center gap-1 bg-stone-200 text-stone-600 text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-bold" title="今日值班人數">
                                                         <Users size={10} /> {staffCount}
                                                     </span>
                                                 </div>
@@ -90,7 +91,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             </div>
 
                             {/* Grid Body */}
-                            <div className="grid grid-cols-7 min-h-[500px] bg-[#fffbeb] bg-opacity-30">
+                            <div className="grid grid-cols-7 min-h-[400px] sm:min-h-[500px] bg-[#fffbeb] bg-opacity-30">
                                 {weekDays.map((day, i) => {
                                     const dayShifts = getShiftsForDay(day);
                                     const formattedDate = format(day, 'yyyy-MM-dd');
@@ -99,9 +100,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                     return (
                                         <div 
                                             key={i} 
-                                            className={`border-r border-[#e7e5e4] last:border-r-0 p-2 relative group hover:bg-[#fafaf9] transition-colors ${isPast ? 'bg-[#f5f5f4]/50' : ''}`}
+                                            className={`border-r border-[#e7e5e4] last:border-r-0 p-1 sm:p-2 relative group hover:bg-[#fafaf9] transition-colors ${isPast ? 'bg-[#f5f5f4]/50' : ''}`}
                                         >
-                                            <div className={`space-y-2 ${isPast ? 'opacity-60 grayscale-[30%]' : ''}`}>
+                                            <div className={`space-y-1.5 sm:space-y-2 ${isPast ? 'opacity-60 grayscale-[30%]' : ''}`}>
                                                 {dayShifts.map(shift => {
                                                     const completedTasks = shift.tasks.filter(t => t.isCompleted).length;
                                                     const totalTasks = shift.tasks.length;
@@ -112,28 +113,28 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                                         <div
                                                             key={shift.id}
                                                             onClick={() => onEditShift(shift)}
-                                                            className={`rounded-lg border shadow-sm cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 relative overflow-hidden group/card bg-white`}
+                                                            className={`rounded-md sm:rounded-lg border shadow-sm cursor-pointer transition-all active:scale-95 sm:hover:shadow-md sm:hover:-translate-y-0.5 relative overflow-hidden group/card bg-white`}
                                                         >
                                                             <div className={`absolute left-0 top-0 bottom-0 w-1 ${isAllDone ? 'bg-emerald-500' : 'bg-amber-400'}`}></div>
-                                                            <div className="pl-2.5 pr-2 py-2">
-                                                                <div className="flex justify-between items-start mb-1">
-                                                                    <div className="font-bold text-sm text-[#44403c] truncate leading-tight">
+                                                            <div className="pl-2 pr-1 py-1.5 sm:pl-2.5 sm:pr-2 sm:py-2">
+                                                                <div className="flex justify-between items-start mb-0.5 sm:mb-1">
+                                                                    <div className="font-bold text-xs sm:text-sm text-[#44403c] truncate leading-tight">
                                                                         {getEmployeeName(shift.employeeId)}
                                                                     </div>
                                                                 </div>
-                                                                <div className="mb-1.5">
-                                                                    <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border font-medium truncate max-w-full ${shift.color}`}>
+                                                                <div className="mb-1">
+                                                                    <span className={`inline-block text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 rounded border font-medium truncate max-w-full ${shift.color}`}>
                                                                         {shift.role}
                                                                     </span>
                                                                 </div>
-                                                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-[#78716c] font-medium items-center">
+                                                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[9px] sm:text-[10px] text-[#78716c] font-medium items-center">
                                                                     <div className="flex items-center gap-0.5">
                                                                         <Clock size={10} />
                                                                         <span>{shift.startTime}-{shift.endTime}</span>
                                                                     </div>
                                                                 </div>
                                                                 {totalTasks > 0 && (
-                                                                    <div className="mt-2 flex items-center gap-1.5">
+                                                                    <div className="mt-1 sm:mt-2 flex items-center gap-1.5">
                                                                         <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
                                                                             <div className={`h-full rounded-full transition-all duration-500 ${isAllDone ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${progressPercentage}%` }} />
                                                                         </div>
@@ -146,7 +147,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                             </div>
                                             <button
                                                 onClick={() => onAddShift(formattedDate)}
-                                                className="absolute bottom-2 right-2 p-2 bg-[#d97706] text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-[#b45309] hover:scale-110 z-10 hidden sm:block"
+                                                className="absolute bottom-2 right-2 p-2 bg-[#d97706] text-white rounded-full shadow-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-[#b45309] hover:scale-110 z-10"
                                                 title="新增排班"
                                             >
                                                 <Plus size={18} />
@@ -159,7 +160,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     </div>
                 </div>
             ) : (
-                // LIST VIEW (New Better Readable Format)
+                // LIST VIEW (Optimized for Mobile)
                 <div className="space-y-4">
                     {weekDays.map((day, i) => {
                         const dayShifts = getShiftsForDay(day);
@@ -207,47 +208,49 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                                 <div 
                                                     key={shift.id}
                                                     onClick={() => onEditShift(shift)}
-                                                    className="p-4 hover:bg-[#fafaf9] cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center gap-4"
+                                                    className="p-3 sm:p-4 hover:bg-[#fafaf9] cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 active:bg-gray-50"
                                                 >
                                                     {/* Employee Info */}
-                                                    <div className="flex items-center gap-3 min-w-[150px]">
+                                                    <div className="flex items-center gap-3 w-full sm:w-auto sm:min-w-[150px]">
                                                         <img 
                                                             src={getEmployeeAvatar(shift.employeeId)} 
                                                             alt="" 
                                                             className="w-10 h-10 rounded-full border border-gray-100" 
                                                         />
                                                         <div>
-                                                            <div className="font-bold text-[#44403c]">{getEmployeeName(shift.employeeId)}</div>
+                                                            <div className="font-bold text-[#44403c] text-base">{getEmployeeName(shift.employeeId)}</div>
                                                             <div className={`text-xs px-1.5 py-0.5 rounded border inline-block mt-0.5 ${shift.color}`}>
                                                                 {shift.role}
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    {/* Time & Stats */}
-                                                    <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
-                                                        <div className="flex items-center gap-1.5 text-sm text-[#57534e] col-span-2 sm:col-span-1">
+                                                    {/* Time & Stats - Stacked on Mobile */}
+                                                    <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-4 items-center bg-gray-50 sm:bg-transparent p-2 sm:p-0 rounded-lg">
+                                                        <div className="flex items-center gap-1.5 text-sm text-[#57534e] col-span-1">
                                                             <Clock size={16} className="text-[#d97706]" />
-                                                            <span className="font-medium">{shift.startTime} - {shift.endTime}</span>
+                                                            <span className="font-medium whitespace-nowrap">{shift.startTime}-{shift.endTime}</span>
                                                         </div>
                                                         
-                                                        {shift.breakDuration && shift.breakDuration > 0 ? (
-                                                            <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
-                                                                <Coffee size={14} />
-                                                                <span>休 {shift.breakDuration}分</span>
-                                                            </div>
-                                                        ) : <div />}
+                                                        <div className="flex justify-end sm:justify-start col-span-1">
+                                                            {shift.breakDuration && shift.breakDuration > 0 ? (
+                                                                <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
+                                                                    <Coffee size={14} />
+                                                                    <span>休 {shift.breakDuration}分</span>
+                                                                </div>
+                                                            ) : <div />}
+                                                        </div>
 
-                                                        <div className="col-span-2 sm:col-span-2">
+                                                        <div className="col-span-2">
                                                             <div className="flex items-center gap-2">
-                                                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                <div className="flex-1 h-2 bg-gray-200 sm:bg-gray-100 rounded-full overflow-hidden">
                                                                     <div 
                                                                         className={`h-full rounded-full ${totalTasks > 0 && completedTasks === totalTasks ? 'bg-emerald-500' : 'bg-amber-400'}`} 
                                                                         style={{ width: `${totalTasks === 0 ? 0 : (completedTasks / totalTasks) * 100}%` }} 
                                                                     />
                                                                 </div>
                                                                 <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                                                                    {completedTasks}/{totalTasks} 任務
+                                                                    {completedTasks}/{totalTasks} 
                                                                 </span>
                                                             </div>
                                                         </div>

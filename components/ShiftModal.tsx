@@ -397,9 +397,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-[#064e3b] bg-opacity-70 backdrop-blur-sm">
+            {/* Note: Added h-[100dvh] for mobile full screen preference */}
             <div className={`bg-[#fcfaf8] w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl sm:max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 sm:border-4 border-[#e7e5e4] ${readOnly ? 'border-gray-300' : 'border-[#e7e5e4]'}`}>
                 {/* Header - Fixed */}
-                <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4] flex-shrink-0">
+                <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4] flex-shrink-0 safe-area-top">
                     <h3 className="text-lg font-bold text-[#44403c] flex items-center gap-2">
                         <div className={`p-1 ${readOnly ? 'bg-gray-500' : 'bg-[#d97706]'} text-white rounded-md`}>
                             <Tent size={18} />
@@ -410,20 +411,20 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         {!readOnly && existingShift && (
                              <button 
                                 onClick={handleDuplicate}
-                                className="text-xs flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-600 transition-colors"
+                                className="text-xs flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-600 transition-colors h-8"
                                 title="複製目前設定為新排班"
                              >
                                 <Copy size={14} /> <span className="hidden sm:inline">複製</span>
                              </button>
                         )}
-                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
-                            <X size={24} />
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1 bg-white rounded-full border border-gray-200">
+                            <X size={20} />
                         </button>
                     </div>
                 </div>
 
                 {/* Body - Scrollable */}
-                <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
                     {/* Conflict Warnings */}
                     {!readOnly && conflictWarnings.length > 0 && (
                         <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded text-amber-800 text-sm flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
@@ -450,13 +451,13 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                         key={emp.id}
                                         onClick={() => toggleEmployeeSelection(emp.id)}
                                         disabled={readOnly}
-                                        className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+                                        className={`flex items-center gap-2 p-2 sm:p-2 rounded-lg border transition-all ${
                                             isSelected 
                                             ? 'bg-[#064e3b] border-[#064e3b] text-white shadow-md' 
                                             : readOnly 
                                                 ? 'bg-gray-50 border-gray-200 text-gray-400 opacity-50' 
                                                 : 'bg-white border-[#d6d3d1] text-[#57534e] hover:border-[#a8a29e]'
-                                        }`}
+                                        } min-h-[50px]`} 
                                     >
                                         <div className={`w-8 h-8 rounded-full border-2 overflow-hidden flex-shrink-0 ${isSelected ? 'border-white' : 'border-transparent'}`}>
                                             <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
@@ -477,7 +478,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 value={date}
                                 disabled={readOnly}
                                 onChange={(e) => setDate(e.target.value)}
-                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                     </div>
 
@@ -490,7 +491,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 value={startTime}
                                 disabled={readOnly}
                                 onChange={(e) => setStartTime(e.target.value)}
-                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                         <div>
@@ -500,7 +501,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 value={endTime}
                                 disabled={readOnly}
                                 onChange={(e) => setEndTime(e.target.value)}
-                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                     </div>
@@ -509,8 +510,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         <div className="col-span-1">
                             <label className="block text-sm font-bold text-[#57534e] mb-1.5 flex items-center gap-1">
                                 <Coffee size={14} className="text-amber-600"/>
-                                休息時間 (分)
-                                <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1 rounded ml-1">不計薪</span>
+                                休息 (分)
                             </label>
                             <input
                                 type="number"
@@ -519,7 +519,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 value={breakDuration}
                                 disabled={readOnly}
                                 onChange={(e) => setBreakDuration(Number(e.target.value))}
-                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                         <div className="col-span-1">
@@ -530,7 +530,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 disabled={readOnly}
                                 onChange={(e) => setRole(e.target.value)}
                                 placeholder="例如：營地管家"
-                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                     </div>
@@ -550,14 +550,14 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-[70%]">
                                     {isManagingTemplates ? (
                                         <span className="text-xs font-bold text-[#d97706] flex items-center gap-1">
-                                            <PenLine size={12} /> 編輯分類與常用任務
+                                            <PenLine size={12} /> 編輯模式
                                         </span>
                                     ) : (
                                         taskCategories.map((cat, idx) => (
                                             <button
                                                 key={cat.id}
                                                 onClick={() => setActiveCategoryIndex(idx)}
-                                                className={`text-xs px-2 py-1 rounded-t-lg whitespace-nowrap transition-colors ${activeCategoryIndex === idx ? 'bg-[#fffbeb] text-[#d97706] border-b-2 border-[#d97706] font-bold' : 'text-stone-500 hover:text-stone-700'}`}
+                                                className={`text-xs px-2 py-1.5 rounded-t-lg whitespace-nowrap transition-colors ${activeCategoryIndex === idx ? 'bg-[#fffbeb] text-[#d97706] border-b-2 border-[#d97706] font-bold' : 'text-stone-500 hover:text-stone-700'}`}
                                             >
                                                 {cat.name}
                                             </button>
@@ -568,7 +568,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                     onClick={() => setIsManagingTemplates(!isManagingTemplates)}
                                     className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${isManagingTemplates ? 'bg-[#064e3b] text-white' : 'text-stone-400 hover:text-[#d97706] hover:bg-stone-50'}`}
                                 >
-                                    {isManagingTemplates ? '完成編輯' : <Settings size={14} />}
+                                    {isManagingTemplates ? '完成' : <Settings size={14} />}
                                 </button>
                             </div>
 
@@ -591,11 +591,11 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                             <div className="flex gap-1">
                                                 <input 
                                                     type="text" 
-                                                    placeholder={`新增 ${cat.name} 任務...`}
+                                                    placeholder={`新增任務...`}
                                                     value={newTaskInput[cat.id] || ''}
                                                     onChange={(e) => setNewTaskInput({...newTaskInput, [cat.id]: e.target.value})}
                                                     onKeyDown={(e) => e.key === 'Enter' && handleAddTemplateTask(cat.id)}
-                                                    className="flex-1 text-xs px-1.5 py-1 border rounded"
+                                                    className="flex-1 text-xs px-1.5 py-1 border rounded text-base sm:text-xs"
                                                 />
                                                 <button onClick={() => handleAddTemplateTask(cat.id)} className="bg-[#e7e5e4] px-1.5 rounded text-stone-600"><Plus size={12} /></button>
                                             </div>
@@ -608,10 +608,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                             value={newCategoryName}
                                             onChange={(e) => setNewCategoryName(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-                                            className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded"
+                                            className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded text-base sm:text-xs"
                                         />
                                         <button onClick={handleAddCategory} className="flex items-center gap-1 bg-[#d97706] text-white px-2 py-1 rounded text-xs hover:bg-[#b45309]">
-                                            <FolderPlus size={12} /> 新增分類
+                                            <FolderPlus size={12} /> 新增
                                         </button>
                                     </div>
                                 </div>
@@ -626,7 +626,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                                 key={idx}
                                                 type="button"
                                                 onClick={() => handleAddTask(t)}
-                                                className="text-[10px] sm:text-xs bg-[#fffbeb] text-[#92400e] border border-[#fcd34d] px-2 py-1 rounded-full hover:bg-[#fef3c7] transition-colors"
+                                                className="text-[11px] sm:text-xs bg-[#fffbeb] text-[#92400e] border border-[#fcd34d] px-2 py-1.5 rounded-full hover:bg-[#fef3c7] transition-colors"
                                             >
                                                 + {t}
                                             </button>
@@ -669,10 +669,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                     onDragStart={(e) => handleDragStart(e, task.id)}
                                     onDragOver={(e) => handleDragOver(e, task.id)}
                                     onDragEnd={handleDragEnd}
-                                    className={`flex items-start gap-2 bg-white p-2.5 rounded-md shadow-sm group hover:ring-1 hover:ring-[#d6d3d1] transition-all relative ${draggedTaskId === task.id ? 'opacity-40 border-2 border-dashed border-[#064e3b]' : ''}`}
+                                    className={`flex items-start gap-3 sm:gap-2 bg-white p-3 sm:p-2.5 rounded-md shadow-sm group hover:ring-1 hover:ring-[#d6d3d1] transition-all relative ${draggedTaskId === task.id ? 'opacity-40 border-2 border-dashed border-[#064e3b]' : ''}`}
                                 >
                                     {!readOnly && !showIncompleteOnly && (
-                                        <div className="mt-0.5 cursor-move text-[#d6d3d1] hover:text-[#a8a29e] flex-shrink-0" title="拖曳排序">
+                                        <div className="mt-0.5 cursor-move text-[#d6d3d1] hover:text-[#a8a29e] flex-shrink-0 hidden sm:block" title="拖曳排序">
                                             <GripVertical size={16} />
                                         </div>
                                     )}
@@ -680,9 +680,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                         <button
                                             onClick={() => handleTaskCompletionClick(task)}
                                             disabled={readOnly}
-                                            className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0 ${readOnly ? 'cursor-default' : ''}`}
+                                            className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0 ${readOnly ? 'cursor-default' : ''} p-1`}
                                         >
-                                            {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                            {task.isCompleted ? <CheckCircle2 size={20} /> : <Circle size={20} />}
                                         </button>
                                         
                                         {/* Completer Selector Popover */}
@@ -713,7 +713,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                         )}
                                     </div>
 
-                                    <div className="flex-1 min-w-0">
+                                    <div className="flex-1 min-w-0 pt-1">
                                         <div className="flex items-start justify-between gap-2">
                                             <span className={`text-sm block break-words ${task.isCompleted ? 'text-[#a8a29e] line-through' : 'text-[#44403c]'}`}>
                                                 {task.description}
@@ -757,7 +757,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                     {!readOnly && (
                                     <button 
                                         onClick={() => removeTask(task.id)}
-                                        className="text-[#d6d3d1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                        className="text-[#d6d3d1] hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0 p-1"
                                     >
                                         <X size={16} />
                                     </button>
@@ -774,7 +774,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 onChange={(e) => setNewTaskText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
                                 placeholder="輸入任務..."
-                                className="flex-1 px-3 py-2.5 text-sm border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className="flex-1 px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
                             />
                             <button
                                 type="button"
@@ -791,43 +791,43 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     <div>
                         <label className="block text-sm font-bold text-[#57534e] mb-1.5 flex items-center gap-1.5">
                             <StickyNote size={16} className="text-[#d97706]" />
-                            班次日誌 / 備註
+                            班次日誌
                         </label>
                         <textarea
                             value={shiftLog}
                             onChange={(e) => setShiftLog(e.target.value)}
                             disabled={readOnly}
-                            placeholder="記錄當日特殊事項、交接重點或執行長叮嚀..."
-                            className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] min-h-[80px] text-sm leading-relaxed resize-y ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`}
+                            placeholder="記錄當日特殊事項、交接重點..."
+                            className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] min-h-[80px] leading-relaxed resize-y ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`}
                         />
                     </div>
                 </div>
 
                 {/* Footer - Fixed */}
-                <div className="px-4 py-3 sm:px-6 sm:py-4 bg-[#f5f5f4] border-t border-[#e7e5e4] flex justify-between flex-shrink-0">
+                <div className="px-4 py-3 sm:px-6 sm:py-4 bg-[#f5f5f4] border-t border-[#e7e5e4] flex justify-between flex-shrink-0 safe-area-bottom">
                     {!readOnly && existingShift ? (
                          <button
                          onClick={() => {
                              onDelete(existingShift.id);
                              onClose();
                          }}
-                         className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium text-sm px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                         className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium text-sm px-3 py-2 sm:px-4 rounded-lg hover:bg-red-50 transition-colors"
                      >
-                         <Trash2 size={16} /> <span className="hidden sm:inline">刪除排班</span>
+                         <Trash2 size={18} /> <span className="hidden sm:inline">刪除</span>
                      </button>
                     ) : <div></div>}
                    
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 w-full sm:w-auto justify-end">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-[#57534e] bg-white border border-[#d6d3d1] rounded-lg hover:bg-[#e7e5e4] transition-colors"
+                            className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 text-sm font-medium text-[#57534e] bg-white border border-[#d6d3d1] rounded-lg hover:bg-[#e7e5e4] transition-colors"
                         >
                             {readOnly ? '關閉' : '取消'}
                         </button>
                         {!readOnly && (
                         <button
                             onClick={handleSave}
-                            className="px-6 py-2 text-sm font-medium text-white bg-[#d97706] rounded-lg hover:bg-[#b45309] shadow-md transition-colors"
+                            className="flex-1 sm:flex-none px-6 py-2.5 sm:py-2 text-sm font-medium text-white bg-[#d97706] rounded-lg hover:bg-[#b45309] shadow-md transition-colors"
                         >
                             {existingShift ? '儲存' : '確認'}
                         </button>
