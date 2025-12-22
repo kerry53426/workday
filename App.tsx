@@ -5,7 +5,7 @@ import { ShiftModal } from './components/ShiftModal';
 import { EmployeePortal } from './components/EmployeePortal';
 import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
-import { Employee, Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, generateUUID } from './types';
+import { Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, generateUUID } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
 import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2 } from 'lucide-react';
 

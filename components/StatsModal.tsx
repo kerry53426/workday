@@ -27,10 +27,6 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
         };
 
         // Calculate pay for a single shift based on labor standards logic provided
-        // Logic: 
-        // 1. Gross duration = End - Start
-        // 2. Net duration = Gross duration - Break Time
-        // 3. Apply wage tiers to Net duration
         const calculateShiftPay = (netDuration: number) => {
             if (netDuration <= 0) return 0;
             
@@ -160,7 +156,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                     </div>
 
                     <div className="text-xs text-gray-500 mb-2 text-right bg-gray-50 p-2 rounded border border-gray-100">
-                        * 計算規則：淨工時 = 總時數 - 休息時間。 薪資計算：基本時薪 $220 (0-8小時) / 加班 $295 (9-10小時) / 加班 $367 (>10小時)
+                        * 計算規則：淨工時 = 總時數 - 休息時間。 薪資計算：基本時薪 $220 (0-8小時) / 加班 $295 (9-10小時) / 加班 $367 ({'>'}10小時)
                     </div>
 
                     {/* Employee Table */}
