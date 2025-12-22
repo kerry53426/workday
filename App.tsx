@@ -13,6 +13,15 @@ import { addWeeks, subWeeks, format } from 'date-fns';
 import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { loadFromPantry, saveToPantry } from './services/pantryService';
 
+// ==========================================
+// 系統設定 (請在此填入 Pantry ID)
+// ==========================================
+// 如果您填入下方的 ID，所有使用者 (執行長、夥伴) 開啟網頁後
+// 都會自動連線，完全不需要手動設定！
+// 請將 ID 填入下方引號中，例如: const APP_PANTRY_ID = "9581632d-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+const APP_PANTRY_ID = "085e1276-c22a-4c58-9a2b-3b40d8fce6d9" as string; 
+// ==========================================
+
 // Mock data initialization
 const loadInitialShifts = (): Shift[] => {
     const saved = localStorage.getItem('sm_shifts');
@@ -62,8 +71,16 @@ const loadTaskCategories = (): TaskCategory[] => {
 };
 
 const loadSystemSettings = (): SystemSettings => {
+    // 優先使用程式碼中寫死的 ID (全域設定)
+    if (APP_PANTRY_ID && APP_PANTRY_ID.trim() !== "") {
+        return { pantryId: APP_PANTRY_ID, isCloudSyncEnabled: true };
+    }
+
+    // 其次使用本地暫存的設定 (個別設定)
     const saved = localStorage.getItem('sm_system_settings');
     if (saved) return JSON.parse(saved);
+    
+    // 預設關閉
     return { isCloudSyncEnabled: false };
 };
 
@@ -530,9 +547,15 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Cloud/Sync Status Button (New) */}
+                    {/* Cloud/Sync Status Button */}
                     <button
-                        onClick={systemSettings.isCloudSyncEnabled ? () => handleManualSync(false) : () => setIsSettingsOpen(true)}
+                        onClick={
+                            // If hardcoded ID is present, we always manually sync.
+                            // If not, we open settings to let user input ID.
+                            (APP_PANTRY_ID || systemSettings.isCloudSyncEnabled) 
+                                ? () => handleManualSync(false) 
+                                : () => setIsSettingsOpen(true)
+                        }
                         disabled={isSyncing}
                         className={`p-2 rounded-full transition-colors mr-1 flex items-center justify-center relative ${systemSettings.isCloudSyncEnabled ? 'text-emerald-300 hover:text-white hover:bg-emerald-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
                         title={systemSettings.isCloudSyncEnabled ? `雲端同步：已啟用 ${lastSyncedTime ? `(上次同步: ${format(lastSyncedTime, 'HH:mm')})` : ''}` : "雲端同步：未啟用 (點擊設定)"}
