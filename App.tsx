@@ -10,8 +10,8 @@ import { EmployeeManagerModal } from './components/EmployeeManagerModal';
 import { SystemSettingsModal } from './components/SystemSettingsModal';
 import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID, SystemSettings } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote, Cloud, CloudOff } from 'lucide-react';
-import { initFirebase, saveToCloud, subscribeToCloud, isFirebaseInitialized } from './services/firebase';
+import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { loadFromPantry, saveToPantry } from './services/pantryService';
 
 // Mock data initialization
 const loadInitialShifts = (): Shift[] => {
@@ -89,68 +89,95 @@ const App: React.FC = () => {
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false); 
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false); // New modal
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
     const [modalDate, setModalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [editingShift, setEditingShift] = useState<Shift | undefined>(undefined);
+    
+    // Cloud Status
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [lastSyncedTime, setLastSyncedTime] = useState<Date | null>(null);
 
     // File input ref for restore
     const fileInputRef = useRef<HTMLInputElement>(null);
     const notificationRef = useRef<HTMLDivElement>(null);
 
     // --- Initialization & Cloud Sync ---
+    
+    // 1. Initial Load on Startup
     useEffect(() => {
-        // Initialize Firebase if settings exist
-        if (systemSettings.isCloudSyncEnabled && systemSettings.firebaseConfig) {
-            initFirebase(systemSettings.firebaseConfig);
+        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
+            handleManualSync(false); // Initial load
         }
-    }, [systemSettings]);
+    }, [systemSettings.isCloudSyncEnabled, systemSettings.pantryId]);
 
-    // Subscriptions for Real-time Cloud Sync
+    // 2. Auto-Polling (The "Real-time" simulation)
+    // Runs every 30 seconds to fetch changes from other devices
     useEffect(() => {
-        let unsubscribeShifts: () => void;
-        let unsubscribeEmployees: () => void;
-        let unsubscribeTasks: () => void;
-        let unsubscribeNotifs: () => void;
-        let unsubscribeFeedbacks: () => void;
-
-        if (systemSettings.isCloudSyncEnabled && isFirebaseInitialized()) {
-            console.log("Starting Cloud Sync Subscriptions...");
-            unsubscribeShifts = subscribeToCloud('shifts', (data) => {
-                // Merge strategy: Cloud overrides local on update
-                setShifts(data);
-                localStorage.setItem('sm_shifts', JSON.stringify(data)); // Keep local updated backup
-            });
-            unsubscribeEmployees = subscribeToCloud('employees', (data) => {
-                setEmployees(data);
-                localStorage.setItem('sm_employees', JSON.stringify(data));
-            });
-            unsubscribeTasks = subscribeToCloud('task_categories', (data) => {
-                setTaskCategories(data);
-                localStorage.setItem('sm_task_categories', JSON.stringify(data));
-            });
-            unsubscribeNotifs = subscribeToCloud('notifications', (data) => {
-                setNotifications(data);
-                localStorage.setItem('sm_notifications', JSON.stringify(data));
-            });
-            unsubscribeFeedbacks = subscribeToCloud('feedbacks', (data) => {
-                setFeedbacks(data);
-                localStorage.setItem('sm_feedbacks', JSON.stringify(data));
-            });
+        let interval: any = null;
+        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId && isLoggedIn) {
+            interval = setInterval(() => {
+                console.log("Auto-syncing from cloud...");
+                handleManualSync(true); // Silent sync
+            }, 30000); // 30 seconds
         }
-
         return () => {
-            if (unsubscribeShifts) unsubscribeShifts();
-            if (unsubscribeEmployees) unsubscribeEmployees();
-            if (unsubscribeTasks) unsubscribeTasks();
-            if (unsubscribeNotifs) unsubscribeNotifs();
-            if (unsubscribeFeedbacks) unsubscribeFeedbacks();
+            if (interval) clearInterval(interval);
         };
-    }, [systemSettings.isCloudSyncEnabled]);
+    }, [systemSettings.isCloudSyncEnabled, systemSettings.pantryId, isLoggedIn]);
+
+    // Function to perform cloud sync (Load)
+    // silent = true means don't show the spinning loading indicator (for background polling)
+    const handleManualSync = async (silent = false) => {
+        if (!systemSettings.pantryId) return;
+        
+        if (!silent) setIsSyncing(true);
+        
+        const data = await loadFromPantry(systemSettings.pantryId);
+        if (data) {
+            // Only update if we have data to avoid wiping with empty response
+            if (data.shifts) setShifts(data.shifts);
+            if (data.employees) setEmployees(data.employees);
+            if (data.taskCategories) setTaskCategories(data.taskCategories);
+            if (data.notifications) setNotifications(data.notifications);
+            if (data.feedbacks) setFeedbacks(data.feedbacks);
+            
+            setLastSyncedTime(new Date());
+            // We generally don't sync passwords or local session state
+        }
+        
+        if (!silent) setIsSyncing(false);
+    };
+
+    // Helper to persist data (Local + Cloud)
+    // We save to cloud on every "Write" operation
+    const persistData = async (updatedData: {
+        shifts?: Shift[], 
+        employees?: Employee[], 
+        taskCategories?: TaskCategory[], 
+        notifications?: Notification[],
+        feedbacks?: Feedback[]
+    }) => {
+        // 1. Update State & LocalStorage (Handled by useEffects below)
+        
+        // 2. Save to Cloud if enabled
+        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
+            setIsSyncing(true); // Show syncing on write
+            // Construct full payload based on current state + updates
+            const fullPayload = {
+                shifts: updatedData.shifts || shifts,
+                employees: updatedData.employees || employees,
+                taskCategories: updatedData.taskCategories || taskCategories,
+                notifications: updatedData.notifications || notifications,
+                feedbacks: updatedData.feedbacks || feedbacks,
+                lastUpdated: new Date().toISOString()
+            };
+            await saveToPantry(systemSettings.pantryId, fullPayload);
+            setIsSyncing(false);
+            setLastSyncedTime(new Date());
+        }
+    };
 
     // Local Persistence (Fallback & Init)
-    // Only save to local storage if Cloud Sync is NOT handling it (to avoid loops), 
-    // OR allow it as a backup cache. 
-    // Here we save to Local Storage on every state change for safety.
     useEffect(() => { localStorage.setItem('sm_shifts', JSON.stringify(shifts)); }, [shifts]);
     useEffect(() => { localStorage.setItem('sm_task_categories', JSON.stringify(taskCategories)); }, [taskCategories]);
     useEffect(() => { localStorage.setItem('sm_notifications', JSON.stringify(notifications)); }, [notifications]);
@@ -158,15 +185,6 @@ const App: React.FC = () => {
     useEffect(() => { localStorage.setItem('sm_employee_pwds', JSON.stringify(employeePasswords)); }, [employeePasswords]);
     useEffect(() => { localStorage.setItem('sm_employees', JSON.stringify(employees)); }, [employees]);
     useEffect(() => { localStorage.setItem('sm_system_settings', JSON.stringify(systemSettings)); }, [systemSettings]);
-
-    // Helper to persist data (Local + Cloud)
-    const persistData = (collection: string, data: any) => {
-        // 1. Save to Cloud if enabled
-        if (systemSettings.isCloudSyncEnabled && isFirebaseInitialized()) {
-            saveToCloud(collection, data);
-        }
-        // 2. LocalStorage is handled by useEffects
-    };
 
     // Click outside to close notification dropdown
     useEffect(() => {
@@ -190,6 +208,8 @@ const App: React.FC = () => {
         } else {
             setCurrentEmployeeId(null);
         }
+        // Attempt sync on login
+        if(systemSettings.isCloudSyncEnabled) handleManualSync(false);
     };
 
     const handleLogout = () => {
@@ -217,9 +237,8 @@ const App: React.FC = () => {
         if (!currentEmployeeId) return;
         setEmployeePasswords(prev => {
             const next = { ...prev, [currentEmployeeId]: newPassword };
-            return next; // Cloud sync for passwords needs careful security, skipping for prototype simplicity or need separate collection
+            return next; 
         });
-        // Note: Password sync is risky without proper Auth. Keeping local for prototype.
     };
 
     const handleSendFeedback = (content: string) => {
@@ -233,26 +252,26 @@ const App: React.FC = () => {
         };
         const nextFeedbacks = [newFeedback, ...feedbacks];
         setFeedbacks(nextFeedbacks);
-        persistData('feedbacks', nextFeedbacks);
+        persistData({ feedbacks: nextFeedbacks });
     };
 
     const handleFeedbackMarkAsRead = (id: string) => {
         const next = feedbacks.map(f => f.id === id ? { ...f, isRead: true } : f);
         setFeedbacks(next);
-        persistData('feedbacks', next);
+        persistData({ feedbacks: next });
     };
 
     const handleUpdateFeedback = (id: string, updates: Partial<Feedback>) => {
         const next = feedbacks.map(f => f.id === id ? { ...f, ...updates } : f);
         setFeedbacks(next);
-        persistData('feedbacks', next);
+        persistData({ feedbacks: next });
     };
 
     const handleDeleteFeedback = (id: string) => {
         if(window.confirm('確定要刪除此留言嗎？')) {
             const next = feedbacks.filter(f => f.id !== id);
             setFeedbacks(next);
-            persistData('feedbacks', next);
+            persistData({ feedbacks: next });
         }
     };
 
@@ -260,7 +279,7 @@ const App: React.FC = () => {
         if (window.confirm("確定要刪除所有已讀的留言嗎？此動作無法復原。")) {
             const next = feedbacks.filter(f => !f.isRead);
             setFeedbacks(next);
-            persistData('feedbacks', next);
+            persistData({ feedbacks: next });
         }
     };
 
@@ -275,36 +294,35 @@ const App: React.FC = () => {
 
     const handleUpdateTaskCategories = (newCategories: TaskCategory[]) => {
         setTaskCategories(newCategories);
-        persistData('task_categories', newCategories);
+        persistData({ taskCategories: newCategories });
     };
 
     const handleUpdateEmployees = (newEmployees: Employee[]) => {
         setEmployees(newEmployees);
-        persistData('employees', newEmployees);
+        persistData({ employees: newEmployees });
     };
 
     const handleSaveSystemSettings = (settings: SystemSettings) => {
         setSystemSettings(settings);
-        // We don't sync settings to cloud, settings are local configuration
     };
 
     // --- Notification Logic ---
     const handleMarkAsRead = (id: string) => {
         const next = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
         setNotifications(next);
-        persistData('notifications', next);
+        persistData({ notifications: next });
     };
 
     const handleMarkAllRead = () => {
         const next = notifications.map(n => ({ ...n, isRead: true }));
         setNotifications(next);
-        persistData('notifications', next);
+        persistData({ notifications: next });
     };
 
     const handleClearNotifications = () => {
         if (window.confirm('確定要清空所有通知嗎？')) {
             setNotifications([]);
-            persistData('notifications', []);
+            persistData({ notifications: [] });
         }
     };
 
@@ -332,7 +350,7 @@ const App: React.FC = () => {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const content = e.target?.result as string;
                 const parsedData = JSON.parse(content);
@@ -357,12 +375,14 @@ const App: React.FC = () => {
                         setEmployees(newEmployees);
                         
                         // Force push imported data to cloud if enabled
-                        if (systemSettings.isCloudSyncEnabled) {
-                             saveToCloud('shifts', newShifts);
-                             saveToCloud('task_categories', newTaskCategories);
-                             saveToCloud('notifications', newNotifications);
-                             saveToCloud('feedbacks', newFeedbacks);
-                             saveToCloud('employees', newEmployees);
+                        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
+                             await persistData({
+                                 shifts: newShifts,
+                                 taskCategories: newTaskCategories,
+                                 notifications: newNotifications,
+                                 feedbacks: newFeedbacks,
+                                 employees: newEmployees
+                             });
                         }
                         
                         alert("資料還原成功！");
@@ -414,13 +434,13 @@ const App: React.FC = () => {
             }
         });
         setShifts(nextShifts);
-        persistData('shifts', nextShifts);
+        persistData({ shifts: nextShifts });
     };
 
     const handleDeleteShift = (id: string) => {
         const nextShifts = shifts.filter(s => s.id !== id);
         setShifts(nextShifts);
-        persistData('shifts', nextShifts);
+        persistData({ shifts: nextShifts });
     };
 
     const handleToggleTask = (shiftId: string, taskId: string, completerId?: string) => {
@@ -450,7 +470,6 @@ const App: React.FC = () => {
                      };
                      nextNotifications = [newNotif, ...nextNotifications];
                      setNotifications(nextNotifications);
-                     persistData('notifications', nextNotifications);
                 }
             }
         } catch (error) { console.error(error); }
@@ -471,7 +490,7 @@ const App: React.FC = () => {
             };
         });
         setShifts(nextShifts);
-        persistData('shifts', nextShifts);
+        persistData({ shifts: nextShifts, notifications: nextNotifications });
     };
 
     const navigateWeek = (direction: 'prev' | 'next') => {
@@ -513,11 +532,12 @@ const App: React.FC = () => {
 
                     {/* Cloud/Sync Status Button (New) */}
                     <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className={`p-2 rounded-full transition-colors mr-1 ${systemSettings.isCloudSyncEnabled ? 'text-emerald-300 hover:text-white hover:bg-emerald-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                        title={systemSettings.isCloudSyncEnabled ? "雲端同步：已啟用" : "雲端同步：未啟用 (點擊設定)"}
+                        onClick={systemSettings.isCloudSyncEnabled ? () => handleManualSync(false) : () => setIsSettingsOpen(true)}
+                        disabled={isSyncing}
+                        className={`p-2 rounded-full transition-colors mr-1 flex items-center justify-center relative ${systemSettings.isCloudSyncEnabled ? 'text-emerald-300 hover:text-white hover:bg-emerald-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                        title={systemSettings.isCloudSyncEnabled ? `雲端同步：已啟用 ${lastSyncedTime ? `(上次同步: ${format(lastSyncedTime, 'HH:mm')})` : ''}` : "雲端同步：未啟用 (點擊設定)"}
                     >
-                        {systemSettings.isCloudSyncEnabled ? <Cloud size={20} /> : <CloudOff size={20} />}
+                        {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : (systemSettings.isCloudSyncEnabled ? <Cloud size={20} /> : <CloudOff size={20} />)}
                     </button>
 
                     <button onClick={() => setIsEmployeeManagerOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴資料管理">
@@ -534,7 +554,7 @@ const App: React.FC = () => {
                             <Bell size={20} />
                             {unreadNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#064e3b]"></span>}
                         </button>
-                        {/* Notification Dropdown (Same as before) */}
+                        {/* Notification Dropdown */}
                         {isNotificationOpen && (
                             <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
                                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50">

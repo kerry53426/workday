@@ -58,6 +58,11 @@ export interface Feedback {
     adminNote?: string;
 }
 
+export interface SystemSettings {
+    pantryId?: string; // Only need one ID now
+    isCloudSyncEnabled: boolean;
+}
+
 export interface FirebaseConfig {
     apiKey: string;
     authDomain: string;
@@ -65,11 +70,6 @@ export interface FirebaseConfig {
     storageBucket: string;
     messagingSenderId: string;
     appId: string;
-}
-
-export interface SystemSettings {
-    firebaseConfig?: FirebaseConfig;
-    isCloudSyncEnabled: boolean;
 }
 
 // Helper to generate unique IDs safely across all browsers/environments
