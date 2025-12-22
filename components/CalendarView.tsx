@@ -1,7 +1,7 @@
 import React from 'react';
 import { format, startOfWeek, addDays, isSameDay, isBefore } from 'date-fns';
 import { Shift, Employee } from '../types';
-import { Plus, User, Clock, Tent, CheckCircle2, CircleDashed, ListTodo, Users, Coffee } from 'lucide-react';
+import { Plus, Clock, Users, Coffee } from 'lucide-react';
 
 interface CalendarViewProps {
     currentDate: Date;

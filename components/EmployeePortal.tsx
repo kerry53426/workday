@@ -1,7 +1,7 @@
 import React from 'react';
 import { Shift, Employee, Task } from '../types';
 import { format, isSameDay, parseISO } from 'date-fns';
-import { Calendar, CheckCircle2, Circle, Clock, Tent, ListTodo, LogOut, StickyNote } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Tent, ListTodo, LogOut, StickyNote } from 'lucide-react';
 
 interface EmployeePortalProps {
     employee: Employee;

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Shift, Employee } from '../types';
-import { X, Calculator, Clock, CheckCircle2, TrendingUp, CalendarDays, Coins, Coffee } from 'lucide-react';
+import { X, Calculator, Clock, TrendingUp, CalendarDays, Coins, Coffee } from 'lucide-react';
 import { format, isSameMonth, parseISO } from 'date-fns';
 
 interface StatsModalProps {

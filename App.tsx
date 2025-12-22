@@ -7,7 +7,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
 import { Employee, Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, generateUUID } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Share2, Users, Tent, LogOut, ArrowLeftCircle, KeyRound, Settings, Calculator, Download, Upload, Database, Bell, Check, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2 } from 'lucide-react';
 
 // Mock data initialization
 const loadInitialShifts = (): Shift[] => {

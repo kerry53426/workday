@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mountain, Lock, ArrowRight, User, Tent, HelpCircle } from 'lucide-react';
+import { Mountain, Lock, ArrowRight, Tent, HelpCircle } from 'lucide-react';
 import { Employee } from '../types';
 
 interface LoginScreenProps {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Shift, Employee, Task, DEFAULT_TASK_TAGS, TaskCategory, generateUUID } from '../types';
 import { generateTasksForRole } from '../services/geminiService';
-import { X, Sparkles, Plus, Trash2, Loader2, CheckCircle2, Circle, Tent, Zap, Settings, Save, Edit2, GripVertical, Tag, Filter, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, User, Coffee } from 'lucide-react';
+import { X, Sparkles, Plus, Trash2, Loader2, CheckCircle2, Circle, Tent, Zap, Settings, GripVertical, Tag, Filter, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, Coffee } from 'lucide-react';
 
 interface ShiftModalProps {
     isOpen: boolean;
