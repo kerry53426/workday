@@ -44,6 +44,14 @@ export interface Notification {
     relatedShiftId?: string;
 }
 
+export interface Feedback {
+    id: string;
+    employeeId: string;
+    content: string;
+    date: string; // ISO String
+    isRead: boolean;
+}
+
 // Helper to generate unique IDs safely across all browsers/environments
 export const generateUUID = () => {
     // Use substring instead of substr (deprecated), and ensure uniqueness

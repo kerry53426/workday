@@ -14,6 +14,7 @@ interface ShiftModalProps {
     taskCategories: TaskCategory[];
     onUpdateTaskCategories: (categories: TaskCategory[]) => void;
     shifts: Shift[]; // Add shifts for conflict detection
+    readOnly?: boolean; // New: Read-only mode
 }
 
 export const ShiftModal: React.FC<ShiftModalProps> = ({
@@ -26,7 +27,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     existingShift,
     taskCategories,
     onUpdateTaskCategories,
-    shifts
+    shifts,
+    readOnly = false
 }) => {
     // Replaced single employeeId with array for multi-select
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
@@ -101,7 +103,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // Check for conflicts whenever critical fields change
     useEffect(() => {
-        if (!isOpen || selectedEmployeeIds.length === 0 || !date || !startTime || !endTime) return;
+        if (!isOpen || selectedEmployeeIds.length === 0 || !date || !startTime || !endTime || readOnly) return;
 
         const warnings: string[] = [];
         const currentStart = parseInt(startTime.replace(':', ''));
@@ -129,7 +131,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         });
 
         setConflictWarnings(warnings);
-    }, [selectedEmployeeIds, date, startTime, endTime, isOpen, shifts, existingShift, employees]);
+    }, [selectedEmployeeIds, date, startTime, endTime, isOpen, shifts, existingShift, employees, readOnly]);
 
     // Close tag picker when clicking outside
     useEffect(() => {
@@ -145,8 +147,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     }, []);
 
     const toggleEmployeeSelection = (id: string) => {
+        if (readOnly) return;
         if (selectedEmployeeIds.includes(id)) {
-            // Prevent deselecting if it's the only one? No, let them deselect but validate on save.
             setSelectedEmployeeIds(prev => prev.filter(eid => eid !== id));
         } else {
             setSelectedEmployeeIds(prev => [...prev, id]);
@@ -154,6 +156,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleGenerateTasks = async () => {
+        if (readOnly) return;
         setIsGenerating(true);
         try {
             const suggestedTasks = await generateTasksForRole(role, startTime, endTime);
@@ -173,6 +176,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleAutoAssign = () => {
+        if (readOnly) return;
         let suggestedTasks: string[] = [];
         let autoTag: string | null = null;
         const currentRole = role.trim();
@@ -219,6 +223,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleAddTask = (description?: string) => {
+        if (readOnly) return;
         const text = description || newTaskText;
         if (!text.trim()) return;
         
@@ -239,10 +244,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const removeTask = (taskId: string) => {
+        if (readOnly) return;
         setTasks(tasks.filter(t => t.id !== taskId));
     };
 
     const toggleTaskCompletion = (taskId: string) => {
+        if (readOnly) return;
         setTasks(tasks.map(t => 
             t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t
         ));
@@ -250,6 +257,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // Toggle specific assignee for a task
     const toggleTaskAssignee = (taskId: string, empId: string) => {
+        if (readOnly) return;
         setTasks(tasks.map(t => {
             if (t.id !== taskId) return t;
             
@@ -264,13 +272,14 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // --- Drag and Drop Handlers ---
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+        if (readOnly) return;
         setDraggedTaskId(id);
         e.dataTransfer.effectAllowed = "move";
     };
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
         e.preventDefault();
-        if (!draggedTaskId || draggedTaskId === targetId) return;
+        if (readOnly || !draggedTaskId || draggedTaskId === targetId) return;
 
         const originalTasks = [...tasks];
         const draggedIndex = originalTasks.findIndex(t => t.id === draggedTaskId);
@@ -289,6 +298,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // --- Template/Category Management Handlers ---
     const handleAddCategory = () => {
+        if (readOnly) return;
         if (newCategoryName.trim()) {
             onUpdateTaskCategories([...taskCategories, {
                 id: generateUUID(),
@@ -300,6 +310,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleDeleteCategory = (id: string) => {
+        if (readOnly) return;
         if(window.confirm('確定要刪除此分類及其所有常用任務嗎？')) {
             const newCategories = taskCategories.filter(c => c.id !== id);
             onUpdateTaskCategories(newCategories);
@@ -310,6 +321,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleAddTemplateTask = (categoryId: string) => {
+        if (readOnly) return;
         const taskText = newTaskInput[categoryId];
         if (taskText?.trim()) {
             const newCategories = taskCategories.map(cat => {
@@ -324,6 +336,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleDeleteTemplateTask = (categoryId: string, taskIndex: number) => {
+        if (readOnly) return;
         const newCategories = taskCategories.map(cat => {
             if (cat.id === categoryId) {
                 return { ...cat, tasks: cat.tasks.filter((_, i) => i !== taskIndex) };
@@ -335,6 +348,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // --- Tag Handlers ---
     const toggleInputTag = (tag: string) => {
+        if (readOnly) return;
         if (currentInputTags.includes(tag)) {
             setCurrentInputTags(currentInputTags.filter(t => t !== tag));
         } else {
@@ -343,6 +357,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     const handleAddCustomTag = () => {
+        if (readOnly) return;
         if (newCustomTag.trim() && !availableTags.includes(newCustomTag.trim())) {
             const newTag = newCustomTag.trim();
             setAvailableTags([...availableTags, newTag]);
@@ -361,6 +376,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // --- Save Logic ---
     const handleSave = () => {
+        if (readOnly) return;
         if (selectedEmployeeIds.length === 0) {
             alert("請至少選擇一位夥伴！");
             return;
@@ -406,6 +422,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // --- Duplicate Logic ---
     const handleDuplicate = () => {
+        if (readOnly) return;
         if (selectedEmployeeIds.length === 0) return;
         
         const newShifts: Shift[] = [];
@@ -473,17 +490,17 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-[#064e3b] bg-opacity-70 backdrop-blur-sm">
-            <div className="bg-[#fcfaf8] w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl sm:max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 sm:border-4 border-[#e7e5e4]">
+            <div className={`bg-[#fcfaf8] w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl sm:max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 sm:border-4 border-[#e7e5e4] ${readOnly ? 'border-gray-300' : 'border-[#e7e5e4]'}`}>
                 {/* Header - Fixed */}
                 <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4] flex-shrink-0">
                     <h3 className="text-lg font-bold text-[#44403c] flex items-center gap-2">
-                        <div className="p-1 bg-[#d97706] text-white rounded-md">
+                        <div className={`p-1 ${readOnly ? 'bg-gray-500' : 'bg-[#d97706]'} text-white rounded-md`}>
                             <Tent size={18} />
                         </div>
-                        {existingShift ? '編輯排班' : '新增排班'}
+                        {readOnly ? '排班詳情' : (existingShift ? '編輯排班' : '新增排班')}
                     </h3>
                     <div className="flex gap-2">
-                        {existingShift && (
+                        {!readOnly && existingShift && (
                              <button 
                                 onClick={handleDuplicate}
                                 className="text-xs flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-600 transition-colors"
@@ -501,7 +518,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 {/* Body - Scrollable */}
                 <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
                     {/* Conflict Warnings */}
-                    {conflictWarnings.length > 0 && (
+                    {!readOnly && conflictWarnings.length > 0 && (
                         <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded text-amber-800 text-sm flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
                             {conflictWarnings.map((warning, idx) => (
                                 <div key={idx} className="flex items-start gap-2">
@@ -525,10 +542,13 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                     <button
                                         key={emp.id}
                                         onClick={() => toggleEmployeeSelection(emp.id)}
+                                        disabled={readOnly}
                                         className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
                                             isSelected 
                                             ? 'bg-[#064e3b] border-[#064e3b] text-white shadow-md' 
-                                            : 'bg-white border-[#d6d3d1] text-[#57534e] hover:border-[#a8a29e]'
+                                            : readOnly 
+                                                ? 'bg-gray-50 border-gray-200 text-gray-400 opacity-50' 
+                                                : 'bg-white border-[#d6d3d1] text-[#57534e] hover:border-[#a8a29e]'
                                         }`}
                                     >
                                         <div className={`w-8 h-8 rounded-full border-2 overflow-hidden flex-shrink-0 ${isSelected ? 'border-white' : 'border-transparent'}`}>
@@ -548,8 +568,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             <input
                                 type="date"
                                 value={date}
+                                disabled={readOnly}
                                 onChange={(e) => setDate(e.target.value)}
-                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                     </div>
 
@@ -560,8 +581,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             <input
                                 type="time"
                                 value={startTime}
+                                disabled={readOnly}
                                 onChange={(e) => setStartTime(e.target.value)}
-                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                         <div>
@@ -569,8 +591,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             <input
                                 type="time"
                                 value={endTime}
+                                disabled={readOnly}
                                 onChange={(e) => setEndTime(e.target.value)}
-                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                     </div>
@@ -587,8 +610,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 min="0"
                                 step="10"
                                 value={breakDuration}
+                                disabled={readOnly}
                                 onChange={(e) => setBreakDuration(Number(e.target.value))}
-                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                         <div className="col-span-1">
@@ -596,9 +620,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             <input
                                 type="text"
                                 value={role}
+                                disabled={readOnly}
                                 onChange={(e) => setRole(e.target.value)}
                                 placeholder="例如：營地管家"
-                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                                className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                         </div>
                     </div>
@@ -608,7 +633,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-2">
                                 <label className="block text-sm font-bold text-[#57534e]">工作項目</label>
-                                {!isManagingTemplates && (
+                                {!readOnly && !isManagingTemplates && (
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
@@ -632,7 +657,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             </div>
                         </div>
 
-                        {/* Task Categories & Templates Section */}
+                        {/* Task Categories & Templates Section (Hide in ReadOnly) */}
+                        {!readOnly && (
                         <div className="bg-white border border-[#d6d3d1] rounded-lg p-3 mb-3 shadow-inner">
                             <div className="flex justify-between items-center mb-2 border-b border-gray-100 pb-2">
                                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-[70%]">
@@ -723,6 +749,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Filter Bar */}
                         <div className="flex flex-col gap-2 mb-2">
@@ -778,20 +805,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             {filteredTasks.map(task => (
                                 <div 
                                     key={task.id} 
-                                    draggable={!showIncompleteOnly && activeTagFilters.length === 0}
+                                    draggable={!readOnly && !showIncompleteOnly && activeTagFilters.length === 0}
                                     onDragStart={(e) => handleDragStart(e, task.id)}
                                     onDragOver={(e) => handleDragOver(e, task.id)}
                                     onDragEnd={handleDragEnd}
                                     className={`flex items-start gap-2 bg-white p-2.5 rounded-md shadow-sm group hover:ring-1 hover:ring-[#d6d3d1] transition-all ${draggedTaskId === task.id ? 'opacity-40 border-2 border-dashed border-[#064e3b]' : ''}`}
                                 >
-                                    {!showIncompleteOnly && activeTagFilters.length === 0 && (
+                                    {!readOnly && !showIncompleteOnly && activeTagFilters.length === 0 && (
                                         <div className="mt-0.5 cursor-move text-[#d6d3d1] hover:text-[#a8a29e] flex-shrink-0" title="拖曳排序">
                                             <GripVertical size={16} />
                                         </div>
                                     )}
                                     <button
                                         onClick={() => toggleTaskCompletion(task.id)}
-                                        className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0`}
+                                        disabled={readOnly}
+                                        className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0 ${readOnly ? 'cursor-default' : ''}`}
                                     >
                                         {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                                     </button>
@@ -817,8 +845,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                                                     e.stopPropagation();
                                                                     toggleTaskAssignee(task.id, emp.id);
                                                                 }}
+                                                                disabled={readOnly}
                                                                 title={`${isAssigned ? '已指派給' : '未指派給'} ${emp.name}`}
-                                                                className={`w-5 h-5 rounded-full border border-white transition-all overflow-hidden ${isAssigned ? 'opacity-100 ring-1 ring-emerald-500' : 'opacity-30 grayscale hover:opacity-100'}`}
+                                                                className={`w-5 h-5 rounded-full border border-white transition-all overflow-hidden ${isAssigned ? 'opacity-100 ring-1 ring-emerald-500' : 'opacity-30 grayscale hover:opacity-100'} ${readOnly ? 'cursor-default' : ''}`}
                                                             >
                                                                 <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
                                                             </button>
@@ -838,16 +867,19 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    {!readOnly && (
                                     <button 
                                         onClick={() => removeTask(task.id)}
                                         className="text-[#d6d3d1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                     >
                                         <X size={16} />
                                     </button>
+                                    )}
                                 </div>
                             ))}
                         </div>
 
+                        {!readOnly && (
                         <div className="flex gap-2 mb-4">
                             {/* Tag Selection Trigger */}
                             <div className="relative" ref={tagPickerRef}>
@@ -920,6 +952,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 <Plus size={20} />
                             </button>
                         </div>
+                        )}
                     </div>
 
                     {/* Shift Log Section */}
@@ -931,15 +964,16 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         <textarea
                             value={shiftLog}
                             onChange={(e) => setShiftLog(e.target.value)}
+                            disabled={readOnly}
                             placeholder="記錄當日特殊事項、交接重點或執行長叮嚀..."
-                            className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] min-h-[80px] text-sm leading-relaxed resize-y"
+                            className={`w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] min-h-[80px] text-sm leading-relaxed resize-y ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`}
                         />
                     </div>
                 </div>
 
                 {/* Footer - Fixed */}
                 <div className="px-4 py-3 sm:px-6 sm:py-4 bg-[#f5f5f4] border-t border-[#e7e5e4] flex justify-between flex-shrink-0">
-                    {existingShift ? (
+                    {!readOnly && existingShift ? (
                          <button
                          onClick={() => {
                              onDelete(existingShift.id);
@@ -956,14 +990,16 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             onClick={onClose}
                             className="px-4 py-2 text-sm font-medium text-[#57534e] bg-white border border-[#d6d3d1] rounded-lg hover:bg-[#e7e5e4] transition-colors"
                         >
-                            取消
+                            {readOnly ? '關閉' : '取消'}
                         </button>
+                        {!readOnly && (
                         <button
                             onClick={handleSave}
                             className="px-6 py-2 text-sm font-medium text-white bg-[#d97706] rounded-lg hover:bg-[#b45309] shadow-md transition-colors"
                         >
                             {existingShift ? '儲存' : '確認'}
                         </button>
+                        )}
                     </div>
                 </div>
             </div>
