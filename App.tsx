@@ -7,9 +7,11 @@ import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { EmployeeManagerModal } from './components/EmployeeManagerModal';
-import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID } from './types';
+import { SystemSettingsModal } from './components/SystemSettingsModal';
+import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID, SystemSettings } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote, Cloud, CloudOff } from 'lucide-react';
+import { initFirebase, saveToCloud, subscribeToCloud, isFirebaseInitialized } from './services/firebase';
 
 // Mock data initialization
 const loadInitialShifts = (): Shift[] => {
@@ -46,7 +48,6 @@ const loadEmployees = (): Employee[] => {
 const loadEmployeePasswords = (): {[key: string]: string} => {
     const saved = localStorage.getItem('sm_employee_pwds');
     if (saved) return JSON.parse(saved);
-    // Initialize defaults if empty
     return {};
 };
 
@@ -54,26 +55,16 @@ const getStoredPassword = (): string => {
     return localStorage.getItem('sm_ceo_pwd') || '1234';
 };
 
-// Load task categories from storage or use default
 const loadTaskCategories = (): TaskCategory[] => {
     const saved = localStorage.getItem('sm_task_categories');
     if (saved) return JSON.parse(saved);
-
-    // Migration check for old flat structure
-    const oldSaved = localStorage.getItem('sm_common_tasks');
-    if (oldSaved) {
-        try {
-            const oldTasks = JSON.parse(oldSaved);
-            if (Array.isArray(oldTasks) && typeof oldTasks[0] === 'string') {
-                return [
-                    ...DEFAULT_TASK_CATEGORIES,
-                    { id: 'custom_migrated', name: '自訂/舊資料', tasks: oldTasks }
-                ];
-            }
-        } catch (e) {}
-    }
-
     return DEFAULT_TASK_CATEGORIES;
+};
+
+const loadSystemSettings = (): SystemSettings => {
+    const saved = localStorage.getItem('sm_system_settings');
+    if (saved) return JSON.parse(saved);
+    return { isCloudSyncEnabled: false };
 };
 
 const App: React.FC = () => {
@@ -90,13 +81,15 @@ const App: React.FC = () => {
     const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(loadTaskCategories()); 
     const [notifications, setNotifications] = useState<Notification[]>(loadNotifications()); 
     const [feedbacks, setFeedbacks] = useState<Feedback[]>(loadFeedbacks());
+    const [systemSettings, setSystemSettings] = useState<SystemSettings>(loadSystemSettings());
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isModalReadOnly, setIsModalReadOnly] = useState(false); 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-    const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false); // New modal state
+    const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false); 
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false); // New modal
     const [modalDate, setModalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [editingShift, setEditingShift] = useState<Shift | undefined>(undefined);
 
@@ -104,30 +97,76 @@ const App: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const notificationRef = useRef<HTMLDivElement>(null);
 
-    // Persistence
+    // --- Initialization & Cloud Sync ---
     useEffect(() => {
-        localStorage.setItem('sm_shifts', JSON.stringify(shifts));
-    }, [shifts]);
+        // Initialize Firebase if settings exist
+        if (systemSettings.isCloudSyncEnabled && systemSettings.firebaseConfig) {
+            initFirebase(systemSettings.firebaseConfig);
+        }
+    }, [systemSettings]);
 
+    // Subscriptions for Real-time Cloud Sync
     useEffect(() => {
-        localStorage.setItem('sm_task_categories', JSON.stringify(taskCategories));
-    }, [taskCategories]);
+        let unsubscribeShifts: () => void;
+        let unsubscribeEmployees: () => void;
+        let unsubscribeTasks: () => void;
+        let unsubscribeNotifs: () => void;
+        let unsubscribeFeedbacks: () => void;
 
-    useEffect(() => {
-        localStorage.setItem('sm_notifications', JSON.stringify(notifications));
-    }, [notifications]);
+        if (systemSettings.isCloudSyncEnabled && isFirebaseInitialized()) {
+            console.log("Starting Cloud Sync Subscriptions...");
+            unsubscribeShifts = subscribeToCloud('shifts', (data) => {
+                // Merge strategy: Cloud overrides local on update
+                setShifts(data);
+                localStorage.setItem('sm_shifts', JSON.stringify(data)); // Keep local updated backup
+            });
+            unsubscribeEmployees = subscribeToCloud('employees', (data) => {
+                setEmployees(data);
+                localStorage.setItem('sm_employees', JSON.stringify(data));
+            });
+            unsubscribeTasks = subscribeToCloud('task_categories', (data) => {
+                setTaskCategories(data);
+                localStorage.setItem('sm_task_categories', JSON.stringify(data));
+            });
+            unsubscribeNotifs = subscribeToCloud('notifications', (data) => {
+                setNotifications(data);
+                localStorage.setItem('sm_notifications', JSON.stringify(data));
+            });
+            unsubscribeFeedbacks = subscribeToCloud('feedbacks', (data) => {
+                setFeedbacks(data);
+                localStorage.setItem('sm_feedbacks', JSON.stringify(data));
+            });
+        }
 
-    useEffect(() => {
-        localStorage.setItem('sm_feedbacks', JSON.stringify(feedbacks));
-    }, [feedbacks]);
+        return () => {
+            if (unsubscribeShifts) unsubscribeShifts();
+            if (unsubscribeEmployees) unsubscribeEmployees();
+            if (unsubscribeTasks) unsubscribeTasks();
+            if (unsubscribeNotifs) unsubscribeNotifs();
+            if (unsubscribeFeedbacks) unsubscribeFeedbacks();
+        };
+    }, [systemSettings.isCloudSyncEnabled]);
 
-    useEffect(() => {
-        localStorage.setItem('sm_employee_pwds', JSON.stringify(employeePasswords));
-    }, [employeePasswords]);
+    // Local Persistence (Fallback & Init)
+    // Only save to local storage if Cloud Sync is NOT handling it (to avoid loops), 
+    // OR allow it as a backup cache. 
+    // Here we save to Local Storage on every state change for safety.
+    useEffect(() => { localStorage.setItem('sm_shifts', JSON.stringify(shifts)); }, [shifts]);
+    useEffect(() => { localStorage.setItem('sm_task_categories', JSON.stringify(taskCategories)); }, [taskCategories]);
+    useEffect(() => { localStorage.setItem('sm_notifications', JSON.stringify(notifications)); }, [notifications]);
+    useEffect(() => { localStorage.setItem('sm_feedbacks', JSON.stringify(feedbacks)); }, [feedbacks]);
+    useEffect(() => { localStorage.setItem('sm_employee_pwds', JSON.stringify(employeePasswords)); }, [employeePasswords]);
+    useEffect(() => { localStorage.setItem('sm_employees', JSON.stringify(employees)); }, [employees]);
+    useEffect(() => { localStorage.setItem('sm_system_settings', JSON.stringify(systemSettings)); }, [systemSettings]);
 
-    useEffect(() => {
-        localStorage.setItem('sm_employees', JSON.stringify(employees));
-    }, [employees]);
+    // Helper to persist data (Local + Cloud)
+    const persistData = (collection: string, data: any) => {
+        // 1. Save to Cloud if enabled
+        if (systemSettings.isCloudSyncEnabled && isFirebaseInitialized()) {
+            saveToCloud(collection, data);
+        }
+        // 2. LocalStorage is handled by useEffects
+    };
 
     // Click outside to close notification dropdown
     useEffect(() => {
@@ -161,6 +200,7 @@ const App: React.FC = () => {
         setIsNotificationOpen(false);
         setIsFeedbackModalOpen(false);
         setIsEmployeeManagerOpen(false);
+        setIsSettingsOpen(false);
         setIsModalOpen(false);
     };
 
@@ -175,10 +215,11 @@ const App: React.FC = () => {
 
     const handleEmployeeChangePassword = (newPassword: string) => {
         if (!currentEmployeeId) return;
-        setEmployeePasswords(prev => ({
-            ...prev,
-            [currentEmployeeId]: newPassword
-        }));
+        setEmployeePasswords(prev => {
+            const next = { ...prev, [currentEmployeeId]: newPassword };
+            return next; // Cloud sync for passwords needs careful security, skipping for prototype simplicity or need separate collection
+        });
+        // Note: Password sync is risky without proper Auth. Keeping local for prototype.
     };
 
     const handleSendFeedback = (content: string) => {
@@ -190,26 +231,36 @@ const App: React.FC = () => {
             date: new Date().toISOString(),
             isRead: false
         };
-        setFeedbacks(prev => [newFeedback, ...prev]);
+        const nextFeedbacks = [newFeedback, ...feedbacks];
+        setFeedbacks(nextFeedbacks);
+        persistData('feedbacks', nextFeedbacks);
     };
 
     const handleFeedbackMarkAsRead = (id: string) => {
-        setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, isRead: true } : f));
+        const next = feedbacks.map(f => f.id === id ? { ...f, isRead: true } : f);
+        setFeedbacks(next);
+        persistData('feedbacks', next);
     };
 
     const handleUpdateFeedback = (id: string, updates: Partial<Feedback>) => {
-        setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        const next = feedbacks.map(f => f.id === id ? { ...f, ...updates } : f);
+        setFeedbacks(next);
+        persistData('feedbacks', next);
     };
 
     const handleDeleteFeedback = (id: string) => {
         if(window.confirm('確定要刪除此留言嗎？')) {
-            setFeedbacks(prev => prev.filter(f => f.id !== id));
+            const next = feedbacks.filter(f => f.id !== id);
+            setFeedbacks(next);
+            persistData('feedbacks', next);
         }
     };
 
     const handleDeleteAllReadFeedbacks = () => {
         if (window.confirm("確定要刪除所有已讀的留言嗎？此動作無法復原。")) {
-            setFeedbacks(prev => prev.filter(f => !f.isRead));
+            const next = feedbacks.filter(f => !f.isRead);
+            setFeedbacks(next);
+            persistData('feedbacks', next);
         }
     };
 
@@ -224,37 +275,42 @@ const App: React.FC = () => {
 
     const handleUpdateTaskCategories = (newCategories: TaskCategory[]) => {
         setTaskCategories(newCategories);
+        persistData('task_categories', newCategories);
     };
 
     const handleUpdateEmployees = (newEmployees: Employee[]) => {
         setEmployees(newEmployees);
+        persistData('employees', newEmployees);
+    };
+
+    const handleSaveSystemSettings = (settings: SystemSettings) => {
+        setSystemSettings(settings);
+        // We don't sync settings to cloud, settings are local configuration
     };
 
     // --- Notification Logic ---
     const handleMarkAsRead = (id: string) => {
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+        const next = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
+        setNotifications(next);
+        persistData('notifications', next);
     };
 
     const handleMarkAllRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        const next = notifications.map(n => ({ ...n, isRead: true }));
+        setNotifications(next);
+        persistData('notifications', next);
     };
 
     const handleClearNotifications = () => {
         if (window.confirm('確定要清空所有通知嗎？')) {
             setNotifications([]);
+            persistData('notifications', []);
         }
     };
 
-    // --- Backup & Restore Logic ---
+    // --- Backup & Restore Logic (Manual) ---
     const handleExportData = () => {
-        const data = {
-            shifts,
-            taskCategories,
-            notifications,
-            feedbacks,
-            employeePasswords,
-            employees // Include employees in backup
-        };
+        const data = { shifts, taskCategories, notifications, feedbacks, employeePasswords, employees };
         const dataStr = JSON.stringify(data, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -268,9 +324,7 @@ const App: React.FC = () => {
     };
 
     const handleImportClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
+        if (fileInputRef.current) fileInputRef.current.click();
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,45 +341,45 @@ const App: React.FC = () => {
                 let newTaskCategories = taskCategories;
                 let newNotifications = notifications;
                 let newFeedbacks = feedbacks;
-                let newEmployeePasswords = employeePasswords;
                 let newEmployees = employees;
 
-                if (parsedData.taskCategories) {
-                    newTaskCategories = parsedData.taskCategories;
-                } else if (parsedData.commonTasks && Array.isArray(parsedData.commonTasks) && typeof parsedData.commonTasks[0] === 'string') {
-                     newTaskCategories = [
-                        ...DEFAULT_TASK_CATEGORIES,
-                        { id: 'restored_legacy', name: '還原/舊資料', tasks: parsedData.commonTasks }
-                    ];
-                }
-
+                if (parsedData.taskCategories) newTaskCategories = parsedData.taskCategories;
                 if (parsedData.notifications) newNotifications = parsedData.notifications;
                 if (parsedData.feedbacks) newFeedbacks = parsedData.feedbacks;
-                if (parsedData.employeePasswords) newEmployeePasswords = parsedData.employeePasswords;
                 if (parsedData.employees) newEmployees = parsedData.employees;
 
                 if (Array.isArray(newShifts)) {
-                    if (window.confirm(`確定要還原備份嗎？\n這將會覆蓋目前的 ${shifts.length} 筆排班資料。`)) {
+                    if (window.confirm(`確定要還原備份嗎？\n這將會覆蓋目前的資料。`)) {
                         setShifts(newShifts);
                         setTaskCategories(newTaskCategories);
                         setNotifications(newNotifications);
                         setFeedbacks(newFeedbacks);
-                        setEmployeePasswords(newEmployeePasswords);
                         setEmployees(newEmployees);
+                        
+                        // Force push imported data to cloud if enabled
+                        if (systemSettings.isCloudSyncEnabled) {
+                             saveToCloud('shifts', newShifts);
+                             saveToCloud('task_categories', newTaskCategories);
+                             saveToCloud('notifications', newNotifications);
+                             saveToCloud('feedbacks', newFeedbacks);
+                             saveToCloud('employees', newEmployees);
+                        }
+                        
                         alert("資料還原成功！");
                     }
                 } else {
-                    alert("檔案格式錯誤，請確認這是正確的備份檔案。");
+                    alert("檔案格式錯誤。");
                 }
             } catch (error) {
                 console.error("Import error:", error);
-                alert("讀取檔案失敗，請重試。");
+                alert("讀取檔案失敗。");
             }
         };
         reader.readAsText(file);
         event.target.value = '';
     };
 
+    // --- Shift Logic ---
     const handleAddShift = (date: string) => {
         if (userRole !== 'manager') return;
         setModalDate(date);
@@ -348,36 +402,35 @@ const App: React.FC = () => {
     };
 
     const handleSaveShift = (shiftData: Shift | Shift[]) => {
-        setShifts(prevShifts => {
-            const dataArray = Array.isArray(shiftData) ? shiftData : [shiftData];
-            let newShifts = [...prevShifts];
+        const dataArray = Array.isArray(shiftData) ? shiftData : [shiftData];
+        const nextShifts = [...shifts];
 
-            dataArray.forEach(newItem => {
-                const index = newShifts.findIndex(s => s.id === newItem.id);
-                if (index >= 0) {
-                    newShifts[index] = newItem; // Update
-                } else {
-                    newShifts.push(newItem); // Create
-                }
-            });
-            return newShifts;
+        dataArray.forEach(newItem => {
+            const index = nextShifts.findIndex(s => s.id === newItem.id);
+            if (index >= 0) {
+                nextShifts[index] = newItem; // Update
+            } else {
+                nextShifts.push(newItem); // Create
+            }
         });
+        setShifts(nextShifts);
+        persistData('shifts', nextShifts);
     };
 
     const handleDeleteShift = (id: string) => {
-        setShifts(shifts.filter(s => s.id !== id));
+        const nextShifts = shifts.filter(s => s.id !== id);
+        setShifts(nextShifts);
+        persistData('shifts', nextShifts);
     };
 
     const handleToggleTask = (shiftId: string, taskId: string, completerId?: string) => {
-        // Find existing data first to generate notification if needed
         const shift = shifts.find(s => s.id === shiftId);
         const task = shift?.tasks.find(t => t.id === taskId);
-        
-        // Who is performing the action? 
-        // If completerId is passed (from Modal selection), use it. 
-        // Otherwise default to current user (for simple toggle).
         const actorId = currentEmployeeId;
         const actualCompleterId = completerId || currentEmployeeId;
+
+        // Clone notifications to append new one
+        let nextNotifications = [...notifications];
 
         // Logic for Notification
         try {
@@ -385,8 +438,6 @@ const App: React.FC = () => {
                 const completer = employees.find(e => e.id === actualCompleterId);
                 const shiftOwner = employees.find(e => e.id === shift.employeeId);
 
-                // Notify Shift Owner if someone else completes their task
-                // Logic: If the person who completed it (completerId) IS NOT the shift owner
                 if (completer && shiftOwner && actualCompleterId !== shift.employeeId) {
                      const newNotif: Notification = {
                          id: generateUUID(),
@@ -397,14 +448,14 @@ const App: React.FC = () => {
                          isRead: false,
                          relatedShiftId: shiftId
                      };
-                     setNotifications(prev => [newNotif, ...prev]);
+                     nextNotifications = [newNotif, ...nextNotifications];
+                     setNotifications(nextNotifications);
+                     persistData('notifications', nextNotifications);
                 }
             }
-        } catch (error) {
-            console.error("Failed to generate notification:", error);
-        }
+        } catch (error) { console.error(error); }
 
-        setShifts(prevShifts => prevShifts.map(s => {
+        const nextShifts = shifts.map(s => {
             if (s.id !== shiftId) return s;
             return {
                 ...s,
@@ -414,12 +465,13 @@ const App: React.FC = () => {
                     return { 
                         ...t, 
                         isCompleted: isNowCompleted,
-                        // If marking as complete, record who did it. If unchecking, clear it.
                         completedBy: isNowCompleted ? actualCompleterId : undefined
                     };
                 })
             };
-        }));
+        });
+        setShifts(nextShifts);
+        persistData('shifts', nextShifts);
     };
 
     const navigateWeek = (direction: 'prev' | 'next') => {
@@ -443,12 +495,11 @@ const App: React.FC = () => {
         );
     }
 
-    // Render Actions based on View
     const renderHeaderActions = () => {
         if (userRole === 'manager') {
             return (
                 <div className="flex items-center gap-2">
-                    <div className="bg-[#064e3b] bg-opacity-20 border border-[#064e3b]/30 rounded-lg flex p-1 mr-2 text-white">
+                    <div className="bg-[#064e3b] bg-opacity-20 border border-[#064e3b]/30 rounded-lg flex p-1 mr-2 text-white hidden sm:flex">
                         <button onClick={() => navigateWeek('prev')} className="p-1 hover:bg-[#064e3b]/40 rounded">
                             <ChevronLeft size={20} />
                         </button>
@@ -460,127 +511,49 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Data Management Group */}
-                    <div className="hidden md:flex items-center gap-1 bg-amber-500/20 rounded-lg p-1 border border-amber-500/30 mr-2">
-                         <input 
-                            type="file" 
-                            ref={fileInputRef}
-                            onChange={handleFileChange}
-                            accept=".json"
-                            className="hidden" 
-                        />
-                        <button
-                            onClick={handleExportData}
-                            className="flex items-center gap-1 px-2 py-1.5 text-amber-100 hover:text-white hover:bg-amber-600/50 rounded transition-colors text-xs font-medium"
-                            title="備份資料 (下載)"
-                        >
-                            <Download size={14} />
-                            備份
-                        </button>
-                        <div className="w-px h-3 bg-amber-500/30 mx-0.5"></div>
-                        <button
-                            onClick={handleImportClick}
-                            className="flex items-center gap-1 px-2 py-1.5 text-amber-100 hover:text-white hover:bg-amber-600/50 rounded transition-colors text-xs font-medium"
-                            title="還原資料 (上傳)"
-                        >
-                            <Upload size={14} />
-                            還原
-                        </button>
-                    </div>
-
-                    {/* New: Employee Manager Button */}
+                    {/* Cloud/Sync Status Button (New) */}
                     <button
-                        onClick={() => setIsEmployeeManagerOpen(true)}
-                        className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1"
-                        title="夥伴資料管理"
+                        onClick={() => setIsSettingsOpen(true)}
+                        className={`p-2 rounded-full transition-colors mr-1 ${systemSettings.isCloudSyncEnabled ? 'text-emerald-300 hover:text-white hover:bg-emerald-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                        title={systemSettings.isCloudSyncEnabled ? "雲端同步：已啟用" : "雲端同步：未啟用 (點擊設定)"}
                     >
+                        {systemSettings.isCloudSyncEnabled ? <Cloud size={20} /> : <CloudOff size={20} />}
+                    </button>
+
+                    <button onClick={() => setIsEmployeeManagerOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴資料管理">
                         <Users size={20} />
                     </button>
 
-                    {/* Feedback Button */}
-                    <button
-                        onClick={() => setIsFeedbackModalOpen(true)}
-                        className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1"
-                        title="夥伴留言"
-                    >
+                    <button onClick={() => setIsFeedbackModalOpen(true)} className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴留言">
                         <MessageSquareQuote size={20} />
-                        {unreadFeedbacks > 0 && (
-                            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border border-[#064e3b]"></span>
-                        )}
+                        {unreadFeedbacks > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border border-[#064e3b]"></span>}
                     </button>
 
-                    {/* Stats Button */}
-                    <button
-                        onClick={() => setIsStatsOpen(true)}
-                        className="flex items-center gap-2 px-3 py-2 bg-[#0284c7] text-white rounded-md text-sm font-medium hover:bg-[#0369a1] transition-colors shadow-sm mr-2"
-                        title="查看工時統計"
-                    >
-                        <Calculator size={16} />
-                        <span className="hidden lg:inline">工時統計</span>
-                    </button>
-
-                    {/* Notification Bell */}
                     <div className="relative mr-2" ref={notificationRef}>
-                        <button 
-                            onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                            className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors"
-                        >
+                        <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors">
                             <Bell size={20} />
-                            {unreadNotifications > 0 && (
-                                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#064e3b]"></span>
-                            )}
+                            {unreadNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#064e3b]"></span>}
                         </button>
-
-                        {/* Notification Dropdown */}
+                        {/* Notification Dropdown (Same as before) */}
                         {isNotificationOpen && (
                             <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
                                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50">
                                     <h4 className="font-bold text-gray-700 text-sm">通知中心 ({unreadNotifications})</h4>
                                     <div className="flex gap-2">
-                                        {notifications.length > 0 && (
-                                            <button 
-                                                onClick={handleClearNotifications} 
-                                                className="text-gray-400 hover:text-red-500 p-1"
-                                                title="清空所有"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
-                                        {unreadNotifications > 0 && (
-                                            <button 
-                                                onClick={handleMarkAllRead} 
-                                                className="text-xs text-[#064e3b] hover:underline flex items-center gap-1"
-                                            >
-                                                <Check size={12} /> 全部已讀
-                                            </button>
-                                        )}
+                                        {notifications.length > 0 && <button onClick={handleClearNotifications} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}
+                                        {unreadNotifications > 0 && <button onClick={handleMarkAllRead} className="text-xs text-[#064e3b] hover:underline flex items-center gap-1"><Check size={12} /> 全部已讀</button>}
                                     </div>
                                 </div>
                                 <div className="max-h-80 overflow-y-auto">
-                                    {notifications.length === 0 ? (
-                                        <div className="py-8 text-center text-gray-400 text-sm">
-                                            <Bell size={24} className="mx-auto mb-2 opacity-30" />
-                                            目前沒有新通知
-                                        </div>
-                                    ) : (
+                                    {notifications.length === 0 ? <div className="py-8 text-center text-gray-400 text-sm">目前沒有新通知</div> : (
                                         <div className="divide-y divide-gray-100">
                                             {notifications.map(notif => (
-                                                <div 
-                                                    key={notif.id} 
-                                                    onClick={() => handleMarkAsRead(notif.id)}
-                                                    className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/50' : ''}`}
-                                                >
+                                                <div key={notif.id} onClick={() => handleMarkAsRead(notif.id)} className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/50' : ''}`}>
                                                     <div className="flex justify-between items-start mb-1">
-                                                        <span className={`text-sm font-bold ${!notif.isRead ? 'text-[#064e3b]' : 'text-gray-600'}`}>
-                                                            {notif.title}
-                                                        </span>
-                                                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
-                                                            {format(notif.timestamp, 'MM/dd HH:mm')}
-                                                        </span>
+                                                        <span className={`text-sm font-bold ${!notif.isRead ? 'text-[#064e3b]' : 'text-gray-600'}`}>{notif.title}</span>
+                                                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">{format(notif.timestamp, 'MM/dd HH:mm')}</span>
                                                     </div>
-                                                    <p className={`text-xs ${!notif.isRead ? 'text-gray-800 font-medium' : 'text-gray-500'} break-words`}>
-                                                        {notif.message}
-                                                    </p>
+                                                    <p className={`text-xs ${!notif.isRead ? 'text-gray-800 font-medium' : 'text-gray-500'} break-words`}>{notif.message}</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -591,28 +564,18 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1 bg-[#ffffff10] rounded-lg p-1 border border-[#ffffff20]">
-                        <button 
-                            onClick={handleChangePassword}
-                            className="flex items-center gap-2 text-sm font-medium text-white/90 hover:text-white px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors"
-                            title="更改密碼"
-                        >
+                        <button onClick={handleChangePassword} className="flex items-center gap-2 text-sm font-medium text-white/90 hover:text-white px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors" title="更改密碼">
                             <Settings size={16} />
                         </button>
-                        
                         <div className="w-px h-4 bg-white/20 mx-1"></div>
-
-                        <button 
-                            onClick={handleLogout}
-                            className="flex items-center gap-2 text-sm font-medium text-[#fca5a5] hover:text-red-300 px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors"
-                            title="登出系統"
-                        >
+                        <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-[#fca5a5] hover:text-red-300 px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors" title="登出系統">
                             <LogOut size={16} />
                         </button>
                     </div>
                 </div>
             );
         } else {
-            return null; // Employee actions are inside the portal
+            return null; 
         }
     };
 
@@ -629,27 +592,12 @@ const App: React.FC = () => {
                             <p className="text-[#78716c]">管理營地運作，分配夥伴任務與職責。</p>
                         </div>
                         <div className="flex gap-2">
-                            {/* Mobile Data Buttons */}
-                            <div className="flex md:hidden items-center gap-1 bg-amber-100 rounded-lg p-1 border border-amber-200">
-                                <input 
-                                    type="file" 
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
-                                    accept=".json"
-                                    className="hidden" 
-                                />
-                                <button
-                                    onClick={handleExportData}
-                                    className="p-2 text-amber-700 hover:bg-amber-200 rounded"
-                                    title="備份資料"
-                                >
+                             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
+                            <div className="flex items-center gap-1 bg-amber-100 rounded-lg p-1 border border-amber-200">
+                                <button onClick={handleExportData} className="p-2 text-amber-700 hover:bg-amber-200 rounded" title="備份資料">
                                     <Download size={18} />
                                 </button>
-                                <button
-                                    onClick={handleImportClick}
-                                    className="p-2 text-amber-700 hover:bg-amber-200 rounded"
-                                    title="還原資料"
-                                >
+                                <button onClick={handleImportClick} className="p-2 text-amber-700 hover:bg-amber-200 rounded" title="還原資料">
                                     <Upload size={18} />
                                 </button>
                             </div>
@@ -672,7 +620,8 @@ const App: React.FC = () => {
                         onAddShift={handleAddShift}
                         onEditShift={handleEditShift}
                     />
-
+                    
+                    {/* ... (Keep existing employee summary section) ... */}
                     <div className="mt-8 bg-white p-6 rounded-xl border border-[#e7e5e4] shadow-sm">
                         <h3 className="text-lg font-bold text-[#44403c] mb-4 flex items-center gap-2">
                             <Users size={20} className="text-[#d97706]" /> 營地夥伴概況
@@ -699,7 +648,7 @@ const App: React.FC = () => {
                         onSave={handleSaveShift}
                         onDelete={handleDeleteShift}
                         initialDate={modalDate}
-                        employees={employees} // Pass state
+                        employees={employees} 
                         existingShift={editingShift}
                         taskCategories={taskCategories}
                         onUpdateTaskCategories={handleUpdateTaskCategories}
@@ -708,31 +657,10 @@ const App: React.FC = () => {
                         currentEmployeeId={currentEmployeeId}
                     />
 
-                    <StatsModal
-                        isOpen={isStatsOpen}
-                        onClose={() => setIsStatsOpen(false)}
-                        currentDate={currentDate}
-                        shifts={shifts}
-                        employees={employees} // Pass state
-                    />
-
-                    <FeedbackModal 
-                        isOpen={isFeedbackModalOpen}
-                        onClose={() => setIsFeedbackModalOpen(false)}
-                        feedbacks={feedbacks}
-                        employees={employees} // Pass state
-                        onMarkAsRead={handleFeedbackMarkAsRead}
-                        onDeleteFeedback={handleDeleteFeedback}
-                        onDeleteAllRead={handleDeleteAllReadFeedbacks}
-                        onUpdateFeedback={handleUpdateFeedback}
-                    />
-
-                    <EmployeeManagerModal
-                        isOpen={isEmployeeManagerOpen}
-                        onClose={() => setIsEmployeeManagerOpen(false)}
-                        employees={employees}
-                        onUpdateEmployees={handleUpdateEmployees}
-                    />
+                    <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} currentDate={currentDate} shifts={shifts} employees={employees} />
+                    <FeedbackModal isOpen={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} feedbacks={feedbacks} employees={employees} onMarkAsRead={handleFeedbackMarkAsRead} onDeleteFeedback={handleDeleteFeedback} onDeleteAllRead={handleDeleteAllReadFeedbacks} onUpdateFeedback={handleUpdateFeedback}/>
+                    <EmployeeManagerModal isOpen={isEmployeeManagerOpen} onClose={() => setIsEmployeeManagerOpen(false)} employees={employees} onUpdateEmployees={handleUpdateEmployees} />
+                    <SystemSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={systemSettings} onSaveSettings={handleSaveSystemSettings} />
                 </>
             ) : (
                 currentEmployee && (
@@ -745,7 +673,7 @@ const App: React.FC = () => {
                         onChangePassword={handleEmployeeChangePassword}
                         onSendFeedback={handleSendFeedback}
                         onViewShift={handleViewShift}
-                        allEmployees={employees} // Pass all employees to resolve names
+                        allEmployees={employees}
                     />
                     <ShiftModal
                         isOpen={isModalOpen}
@@ -753,7 +681,7 @@ const App: React.FC = () => {
                         onSave={() => {}} 
                         onDelete={() => {}} 
                         initialDate={modalDate}
-                        employees={employees} // Pass state
+                        employees={employees} 
                         existingShift={editingShift}
                         taskCategories={taskCategories}
                         onUpdateTaskCategories={() => {}} 

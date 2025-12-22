@@ -58,6 +58,20 @@ export interface Feedback {
     adminNote?: string;
 }
 
+export interface FirebaseConfig {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    appId: string;
+}
+
+export interface SystemSettings {
+    firebaseConfig?: FirebaseConfig;
+    isCloudSyncEnabled: boolean;
+}
+
 // Helper to generate unique IDs safely across all browsers/environments
 export const generateUUID = () => {
     // Use substring instead of substr (deprecated), and ensure uniqueness
