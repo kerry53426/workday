@@ -4,7 +4,8 @@ export interface Task {
     description: string;
     isCompleted: boolean;
     tags: string[];
-    assigneeIds?: string[]; // New: List of employee IDs assigned to this task
+    assigneeIds?: string[]; // List of employee IDs assigned to this task
+    completedBy?: string; // New: ID of the employee who completed this task
 }
 
 export interface Shift {
@@ -13,7 +14,7 @@ export interface Shift {
     date: string; // YYYY-MM-DD
     startTime: string; // HH:mm
     endTime: string; // HH:mm
-    breakDuration: number; // New: Break duration in minutes (unpaid)
+    breakDuration: number; // Break duration in minutes (unpaid)
     role: string;
     tasks: Task[];
     shiftLog?: string; // New field for notes/logs
@@ -26,6 +27,7 @@ export interface Employee {
     email: string;
     avatar: string;
     color: string;
+    hourlyWage: number; // Individual hourly wage
 }
 
 export interface TaskCategory {
@@ -36,7 +38,7 @@ export interface TaskCategory {
 
 export interface Notification {
     id: string;
-    type: 'task_completion';
+    type: 'task_completion' | 'help_received'; // Added 'help_received'
     title: string;
     message: string;
     timestamp: number;
@@ -50,6 +52,10 @@ export interface Feedback {
     content: string;
     date: string; // ISO String
     isRead: boolean;
+    // New management fields
+    category?: '設備' | '人事' | '營運' | '其他';
+    isImportant?: boolean;
+    adminNote?: string;
 }
 
 // Helper to generate unique IDs safely across all browsers/environments
@@ -66,14 +72,16 @@ export const COLORS = [
     'bg-sky-100 border-sky-300 text-sky-800',             // Sky
     'bg-orange-100 border-orange-300 text-orange-800',    // Sunset
     'bg-teal-100 border-teal-300 text-teal-800',          // Lake
+    'bg-rose-100 border-rose-300 text-rose-800',          // Flower
+    'bg-indigo-100 border-indigo-300 text-indigo-800',    // Night
+    'bg-lime-100 border-lime-300 text-lime-800',          // Grass
 ];
 
 export const INITIAL_EMPLOYEES: Employee[] = [
-    { id: '1', name: '小林', email: 'lin@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=lin&backgroundColor=ecfdf5', color: COLORS[0] },
-    { id: '2', name: '翊丞', email: 'yicheng@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=yi&backgroundColor=fef3c7', color: COLORS[1] },
-    // Removed '文珊' as requested
-    { id: '4', name: 'hili', email: 'hili@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=hili&backgroundColor=e0f2fe', color: COLORS[3] },
-    { id: '5', name: '阿成', email: 'acheng@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=cheng&backgroundColor=ffedd5', color: COLORS[4] },
+    { id: '1', name: '小林', email: 'lin@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=lin&backgroundColor=ecfdf5', color: COLORS[0], hourlyWage: 185 },
+    { id: '2', name: '翊丞', email: 'yicheng@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=yi&backgroundColor=fef3c7', color: COLORS[1], hourlyWage: 200 },
+    { id: '4', name: 'hili', email: 'hili@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=hili&backgroundColor=e0f2fe', color: COLORS[3], hourlyWage: 250 },
+    { id: '5', name: '阿成', email: 'acheng@aishang.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=cheng&backgroundColor=ffedd5', color: COLORS[4], hourlyWage: 300 },
 ];
 
 export const DEFAULT_TASK_CATEGORIES: TaskCategory[] = [

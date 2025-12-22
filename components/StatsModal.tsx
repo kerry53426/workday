@@ -16,7 +16,6 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
     // Calculate statistics based on current month
     const stats = useMemo(() => {
         const currentMonthShifts = shifts.filter(s => isSameMonth(parseISO(s.date), currentDate));
-        const BASE_HOURLY_WAGE = 220;
         
         const calculateDuration = (start: string, end: string) => {
             const [startH, startM] = start.split(':').map(Number);
@@ -28,6 +27,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
 
         const employeeStats = employees.map(emp => {
             const empShifts = currentMonthShifts.filter(s => s.employeeId === emp.id);
+            const BASE_WAGE = emp.hourlyWage || 185; // Default to 185 if not set
             
             let totalNetHours = 0;
             let totalBreakHours = 0;
@@ -68,11 +68,11 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                 totalOt1Hours += ot1;
                 totalOt2Hours += ot2;
 
-                // Calculate Pay based on specific tiers
+                // Calculate Pay based on specific tiers using INDIVIDUAL WAGE
                 estimatedSalary += Math.round(
-                    (normal * BASE_HOURLY_WAGE) + 
-                    (ot1 * BASE_HOURLY_WAGE * 1.34) + 
-                    (ot2 * BASE_HOURLY_WAGE * 1.67)
+                    (normal * BASE_WAGE) + 
+                    (ot1 * BASE_WAGE * 1.34) + 
+                    (ot2 * BASE_WAGE * 1.67)
                 );
 
                 totalTasks += s.tasks.length;
@@ -95,8 +95,10 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
         const grandTotalNetHours = employeeStats.reduce((acc, curr) => acc + curr.totalNetHours, 0);
         const grandTotalSalary = employeeStats.reduce((acc, curr) => acc + curr.estimatedSalary, 0);
         const totalShiftsCount = currentMonthShifts.length;
+        // Average wage across valid hours
+        const averageWage = grandTotalNetHours > 0 ? Math.round(grandTotalSalary / grandTotalNetHours) : 0;
 
-        return { employeeStats, grandTotalNetHours, grandTotalSalary, totalShiftsCount };
+        return { employeeStats, grandTotalNetHours, grandTotalSalary, totalShiftsCount, averageWage };
     }, [shifts, employees, currentDate]);
 
     if (!isOpen) return null;
@@ -157,14 +159,14 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                             <div>
                                 <div className="text-xs text-[#78716c]">平均時薪成本</div>
                                 <div className="text-xl font-bold text-[#0284c7]">
-                                    ${Math.round(stats.grandTotalSalary / (stats.grandTotalNetHours || 1))} <span className="text-xs font-normal text-gray-500">/hr</span>
+                                    ${stats.averageWage} <span className="text-xs font-normal text-gray-500">/hr</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div className="text-xs text-gray-500 mb-2 text-right bg-gray-50 p-2 rounded border border-gray-100">
-                        * 計算規則：淨工時 = 總時數 - 休息時間。 薪資計算：基本時薪 $220 (0-8小時) / 加班 $295 (9-10小時) / 加班 $367 ({'>'}10小時)
+                        * 計算規則：淨工時 = 總時數 - 休息時間。 薪資計算：依每人基本時薪 (0-8小時) / 加班 1.34倍 (9-10小時) / 加班 1.67倍 ({'>'}10小時)
                     </div>
 
                     {/* Employee Table */}
@@ -173,7 +175,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                             <table className="w-full text-left border-collapse min-w-[800px]">
                                 <thead>
                                     <tr className="bg-[#fafaf9] border-b border-[#e7e5e4] text-[#57534e] text-sm uppercase tracking-wider">
-                                        <th className="px-4 py-4 font-bold sticky left-0 bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">夥伴姓名</th>
+                                        <th className="px-4 py-4 font-bold sticky left-0 bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">夥伴姓名 / 時薪</th>
                                         <th className="px-4 py-4 font-bold text-center">排班數</th>
                                         <th className="px-4 py-4 font-bold text-center bg-gray-50 text-gray-700 border-x border-gray-200">淨工時 (hr)</th>
                                         <th className="px-4 py-4 font-bold text-center bg-emerald-50 text-emerald-800">正常 (1.0)</th>
@@ -190,7 +192,12 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
                                             <td className="px-4 py-4 sticky left-0 bg-white group-hover:bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                                 <div className="flex items-center gap-2">
                                                     <img src={emp.avatar} alt={emp.name} className="w-8 h-8 rounded-full shadow-sm" />
-                                                    <span className="font-bold text-[#44403c] whitespace-nowrap">{emp.name}</span>
+                                                    <div>
+                                                        <div className="font-bold text-[#44403c] whitespace-nowrap">{emp.name}</div>
+                                                        <div className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded inline-block">
+                                                            ${emp.hourlyWage}/hr
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4 text-center">

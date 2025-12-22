@@ -1,16 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { Shift, Employee, Task } from '../types';
 import { format, isSameDay, parseISO, addDays, startOfToday } from 'date-fns';
-import { CheckCircle2, Circle, Clock, Tent, ListTodo, LogOut, StickyNote, Calendar as CalendarIcon, KeyRound, MessageSquarePlus, Send, Settings, X, ChevronRight, Coffee } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Tent, ListTodo, LogOut, StickyNote, Calendar as CalendarIcon, KeyRound, MessageSquarePlus, Send, Settings, X, ChevronRight, Coffee, Users, HelpingHand } from 'lucide-react';
 
 interface EmployeePortalProps {
     employee: Employee;
     shifts: Shift[];
-    onToggleTask: (shiftId: string, taskId: string) => void;
+    onToggleTask: (shiftId: string, taskId: string, completerId?: string) => void;
     onLogout: () => void;
     onChangePassword: (newPassword: string) => void;
     onSendFeedback: (content: string) => void;
-    onViewShift: (shift: Shift) => void; // New prop to view shift details
+    onViewShift: (shift: Shift) => void; 
+    allEmployees?: Employee[]; // New prop to resolve names
 }
 
 export const EmployeePortal: React.FC<EmployeePortalProps> = ({ 
@@ -20,7 +21,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     onLogout,
     onChangePassword,
     onSendFeedback,
-    onViewShift
+    onViewShift,
+    allEmployees = []
 }) => {
     const today = startOfToday();
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -31,16 +33,23 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     // Refs for scrolling to specific dates
     const shiftRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     
-    // 1. Prepare Data
-    const sortedShifts = [...shifts]
+    // 1. Prepare My Shifts
+    const myShifts = [...shifts]
         .filter(s => s.employeeId === employee.id)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const upcomingShifts = sortedShifts.filter(s => new Date(s.date) >= new Date(today.setHours(0,0,0,0)));
+    const myUpcomingShifts = myShifts.filter(s => new Date(s.date) >= new Date(today.setHours(0,0,0,0)));
+
+    // 2. Prepare Team Shifts (Others working TODAY)
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const teamShiftsToday = shifts.filter(s => 
+        s.date === todayStr && 
+        s.employeeId !== employee.id
+    );
 
     // Group shifts by Month for cleaner list view
     const groupedShifts: { [key: string]: Shift[] } = {};
-    upcomingShifts.forEach(shift => {
+    myUpcomingShifts.forEach(shift => {
         const monthKey = format(parseISO(shift.date), 'yyyy年 M月');
         if (!groupedShifts[monthKey]) groupedShifts[monthKey] = [];
         groupedShifts[monthKey].push(shift);
@@ -50,8 +59,9 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     const next14Days = Array.from({ length: 14 }, (_, i) => addDays(today, i));
 
     const handleTaskClick = (e: React.MouseEvent, shiftId: string, task: Task) => {
-        e.stopPropagation(); // Prevent opening modal when clicking checkbox
-        onToggleTask(shiftId, task.id);
+        e.stopPropagation(); 
+        // Pass current employee ID as the completer
+        onToggleTask(shiftId, task.id, employee.id);
     };
 
     const handleSubmitPassword = (e: React.FormEvent) => {
@@ -82,19 +92,15 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
         const element = shiftRefs.current[dateStr];
         if (element) {
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Add a temporary highlight effect
             element.classList.add('ring-4', 'ring-[#d97706]/30');
             setTimeout(() => {
                 element.classList.remove('ring-4', 'ring-[#d97706]/30');
             }, 1500);
-        } else {
-            // If the shift is not loaded or doesn't exist for that day
-            const hasShift = upcomingShifts.some(s => s.date === dateStr);
-            if (!hasShift) {
-                // Optional: Show toast "No shift on this day"
-            }
         }
     };
+
+    const getEmployeeName = (id: string) => allEmployees.find(e => e.id === id)?.name || '未知夥伴';
+    const getEmployeeAvatar = (id: string) => allEmployees.find(e => e.id === id)?.avatar;
 
     return (
         <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -154,7 +160,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 </div>
             )}
 
-            {/* Quick View: Next 14 Days Strip (Interactive) */}
+            {/* Quick View: Next 14 Days Strip */}
             <div className="bg-white rounded-xl shadow-sm border border-[#e7e5e4] p-4 overflow-hidden">
                 <div className="flex items-center gap-2 mb-3 text-[#57534e] font-bold text-sm">
                     <CalendarIcon size={16} className="text-[#d97706]" />
@@ -163,7 +169,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
                     {next14Days.map((day, i) => {
                         const dateStr = format(day, 'yyyy-MM-dd');
-                        const hasShift = upcomingShifts.find(s => s.date === dateStr);
+                        const hasShift = myUpcomingShifts.find(s => s.date === dateStr);
                         const isToday = isSameDay(day, today);
                         const weekDayMap = ['日', '一', '二', '三', '四', '五', '六'];
                         const zhDay = weekDayMap[day.getDay()];
@@ -196,33 +202,69 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 </div>
             </div>
 
-             {/* Feedback Box */}
-             <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-100 p-4">
-                <div className="flex items-center gap-2 mb-3 text-amber-800 font-bold text-sm">
-                    <MessageSquarePlus size={16} />
-                    夥伴心聲 / 建議
+            {/* TEAM TASKS SECTION (New) */}
+            {teamShiftsToday.length > 0 && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4 text-[#1e3a8a] font-bold">
+                        <Users size={20} />
+                        <h3>今日夥伴動態 (互相支援)</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {teamShiftsToday.map(shift => {
+                            const partner = allEmployees.find(e => e.id === shift.employeeId);
+                            const completedCount = shift.tasks.filter(t => t.isCompleted).length;
+                            
+                            return (
+                                <div key={shift.id} className="bg-white rounded-xl p-4 border border-blue-100 shadow-sm hover:shadow-md transition-shadow">
+                                    <div className="flex items-center gap-3 mb-3 pb-3 border-b border-gray-100">
+                                        <img src={partner?.avatar} alt={partner?.name} className="w-10 h-10 rounded-full bg-gray-200" />
+                                        <div className="flex-1">
+                                            <div className="font-bold text-gray-800">{partner?.name || '未知夥伴'}</div>
+                                            <div className="text-xs text-blue-600 bg-blue-50 inline-block px-1.5 rounded mt-0.5">{shift.role}</div>
+                                        </div>
+                                        <div className="text-xs font-bold text-gray-400">
+                                            {completedCount}/{shift.tasks.length}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                        {shift.tasks.length === 0 && <p className="text-xs text-gray-400 italic">無任務</p>}
+                                        {shift.tasks.map(task => (
+                                            <div 
+                                                key={task.id} 
+                                                onClick={(e) => handleTaskClick(e, shift.id, task)}
+                                                className={`flex items-start gap-2 p-2 rounded cursor-pointer transition-colors border ${
+                                                    task.isCompleted 
+                                                    ? 'bg-gray-50 border-transparent' 
+                                                    : 'bg-white border-gray-200 hover:border-blue-300'
+                                                }`}
+                                            >
+                                                <div className={`mt-0.5 ${task.isCompleted ? 'text-emerald-500' : 'text-gray-300'}`}>
+                                                    {task.isCompleted ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`text-xs ${task.isCompleted ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                                        {task.description}
+                                                    </p>
+                                                    {task.isCompleted && task.completedBy && task.completedBy !== shift.employeeId && (
+                                                        <div className="flex items-center gap-1 mt-1 text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded w-fit">
+                                                            <HelpingHand size={10} />
+                                                            由 {getEmployeeName(task.completedBy)} 協助完成
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-                <div className="relative">
-                    <textarea 
-                        value={feedbackContent}
-                        onChange={(e) => setFeedbackContent(e.target.value)}
-                        placeholder="有什麼想跟執行長說的嗎？不管是工作建議、心情分享，都歡迎留言..."
-                        className="w-full p-3 pr-12 rounded-lg border border-amber-200 bg-white/80 focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm min-h-[80px] resize-none"
-                    />
-                    <button 
-                        onClick={handleSubmitFeedback}
-                        disabled={!feedbackContent.trim() || isFeedbackSubmitting}
-                        className="absolute bottom-3 right-3 p-1.5 bg-[#d97706] text-white rounded-full shadow-md hover:bg-[#b45309] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                        <Send size={16} />
-                    </button>
-                </div>
-                <p className="text-[10px] text-amber-600/60 mt-2 text-right">
-                    * 您的留言將直接傳送給執行長
-                </p>
-            </div>
+            )}
 
-            {/* Shift List Grouped by Month */}
+            {/* My Shifts Section */}
             {Object.keys(groupedShifts).length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-[#e7e5e4]">
                     <div className="bg-[#f5f5f4] w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -318,6 +360,12 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                                         <span className={`text-sm block leading-snug ${task.isCompleted ? 'text-[#a8a29e] line-through' : 'text-[#44403c]'}`}>
                                                             {task.description}
                                                         </span>
+                                                        {task.completedBy && task.completedBy !== shift.employeeId && task.isCompleted && (
+                                                             <div className="flex items-center gap-1 mt-1 text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded w-fit">
+                                                                <HelpingHand size={10} />
+                                                                由 {getEmployeeName(task.completedBy)} 協助
+                                                            </div>
+                                                        )}
                                                         {task.tags && task.tags.length > 0 && !task.isCompleted && (
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
                                                                 {task.tags.map(tag => (
@@ -350,6 +398,31 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                     </div>
                 ))
             )}
+             {/* Feedback Box */}
+             <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-100 p-4">
+                <div className="flex items-center gap-2 mb-3 text-amber-800 font-bold text-sm">
+                    <MessageSquarePlus size={16} />
+                    夥伴心聲 / 建議
+                </div>
+                <div className="relative">
+                    <textarea 
+                        value={feedbackContent}
+                        onChange={(e) => setFeedbackContent(e.target.value)}
+                        placeholder="有什麼想跟執行長說的嗎？不管是工作建議、心情分享，都歡迎留言..."
+                        className="w-full p-3 pr-12 rounded-lg border border-amber-200 bg-white/80 focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm min-h-[80px] resize-none"
+                    />
+                    <button 
+                        onClick={handleSubmitFeedback}
+                        disabled={!feedbackContent.trim() || isFeedbackSubmitting}
+                        className="absolute bottom-3 right-3 p-1.5 bg-[#d97706] text-white rounded-full shadow-md hover:bg-[#b45309] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                        <Send size={16} />
+                    </button>
+                </div>
+                <p className="text-[10px] text-amber-600/60 mt-2 text-right">
+                    * 您的留言將直接傳送給執行長
+                </p>
+            </div>
         </div>
     );
 };

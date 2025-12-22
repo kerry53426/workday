@@ -6,7 +6,8 @@ import { EmployeePortal } from './components/EmployeePortal';
 import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
 import { FeedbackModal } from './components/FeedbackModal';
-import { Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID } from './types';
+import { EmployeeManagerModal } from './components/EmployeeManagerModal';
+import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
 import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote } from 'lucide-react';
 
@@ -27,6 +28,19 @@ const loadFeedbacks = (): Feedback[] => {
     const saved = localStorage.getItem('sm_feedbacks');
     if (saved) return JSON.parse(saved);
     return [];
+};
+
+const loadEmployees = (): Employee[] => {
+    const saved = localStorage.getItem('sm_employees');
+    if (saved) {
+        // Migration: Ensure hourlyWage exists if loading old data
+        const emps = JSON.parse(saved);
+        return emps.map((e: any) => ({
+            ...e,
+            hourlyWage: e.hourlyWage || 185
+        }));
+    }
+    return INITIAL_EMPLOYEES;
 };
 
 const loadEmployeePasswords = (): {[key: string]: string} => {
@@ -69,6 +83,7 @@ const App: React.FC = () => {
     const [ceoPassword, setCeoPassword] = useState(getStoredPassword());
     const [employeePasswords, setEmployeePasswords] = useState<{[key: string]: string}>(loadEmployeePasswords());
     
+    const [employees, setEmployees] = useState<Employee[]>(loadEmployees());
     const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [shifts, setShifts] = useState<Shift[]>(loadInitialShifts());
@@ -77,9 +92,10 @@ const App: React.FC = () => {
     const [feedbacks, setFeedbacks] = useState<Feedback[]>(loadFeedbacks());
 
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isModalReadOnly, setIsModalReadOnly] = useState(false); // New state for ReadOnly mode
+    const [isModalReadOnly, setIsModalReadOnly] = useState(false); 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+    const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false); // New modal state
     const [isNotificationOpen, setIsNotificationOpen] = useState(false); 
     const [modalDate, setModalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [editingShift, setEditingShift] = useState<Shift | undefined>(undefined);
@@ -108,6 +124,10 @@ const App: React.FC = () => {
     useEffect(() => {
         localStorage.setItem('sm_employee_pwds', JSON.stringify(employeePasswords));
     }, [employeePasswords]);
+
+    useEffect(() => {
+        localStorage.setItem('sm_employees', JSON.stringify(employees));
+    }, [employees]);
 
     // Click outside to close notification dropdown
     useEffect(() => {
@@ -140,6 +160,7 @@ const App: React.FC = () => {
         setIsStatsOpen(false);
         setIsNotificationOpen(false);
         setIsFeedbackModalOpen(false);
+        setIsEmployeeManagerOpen(false);
         setIsModalOpen(false);
     };
 
@@ -176,6 +197,10 @@ const App: React.FC = () => {
         setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, isRead: true } : f));
     };
 
+    const handleUpdateFeedback = (id: string, updates: Partial<Feedback>) => {
+        setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    };
+
     const handleDeleteFeedback = (id: string) => {
         if(window.confirm('確定要刪除此留言嗎？')) {
             setFeedbacks(prev => prev.filter(f => f.id !== id));
@@ -201,6 +226,10 @@ const App: React.FC = () => {
         setTaskCategories(newCategories);
     };
 
+    const handleUpdateEmployees = (newEmployees: Employee[]) => {
+        setEmployees(newEmployees);
+    };
+
     // --- Notification Logic ---
     const handleMarkAsRead = (id: string) => {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
@@ -223,7 +252,8 @@ const App: React.FC = () => {
             taskCategories,
             notifications,
             feedbacks,
-            employeePasswords
+            employeePasswords,
+            employees // Include employees in backup
         };
         const dataStr = JSON.stringify(data, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
@@ -258,6 +288,7 @@ const App: React.FC = () => {
                 let newNotifications = notifications;
                 let newFeedbacks = feedbacks;
                 let newEmployeePasswords = employeePasswords;
+                let newEmployees = employees;
 
                 if (parsedData.taskCategories) {
                     newTaskCategories = parsedData.taskCategories;
@@ -271,6 +302,7 @@ const App: React.FC = () => {
                 if (parsedData.notifications) newNotifications = parsedData.notifications;
                 if (parsedData.feedbacks) newFeedbacks = parsedData.feedbacks;
                 if (parsedData.employeePasswords) newEmployeePasswords = parsedData.employeePasswords;
+                if (parsedData.employees) newEmployees = parsedData.employees;
 
                 if (Array.isArray(newShifts)) {
                     if (window.confirm(`確定要還原備份嗎？\n這將會覆蓋目前的 ${shifts.length} 筆排班資料。`)) {
@@ -279,6 +311,7 @@ const App: React.FC = () => {
                         setNotifications(newNotifications);
                         setFeedbacks(newFeedbacks);
                         setEmployeePasswords(newEmployeePasswords);
+                        setEmployees(newEmployees);
                         alert("資料還原成功！");
                     }
                 } else {
@@ -335,29 +368,37 @@ const App: React.FC = () => {
         setShifts(shifts.filter(s => s.id !== id));
     };
 
-    const handleToggleTask = (shiftId: string, taskId: string) => {
+    const handleToggleTask = (shiftId: string, taskId: string, completerId?: string) => {
         // Find existing data first to generate notification if needed
         const shift = shifts.find(s => s.id === shiftId);
         const task = shift?.tasks.find(t => t.id === taskId);
+        
+        // Who is performing the action? 
+        // If completerId is passed (from Modal selection), use it. 
+        // Otherwise default to current user (for simple toggle).
+        const actorId = currentEmployeeId;
+        const actualCompleterId = completerId || currentEmployeeId;
 
-        // Logic for Notification: Only if Employee completes a task
-        // Wrapped in try-catch to ensure task toggling works even if notifications fail
+        // Logic for Notification
         try {
-            if (userRole === 'employee' && shift && task && !task.isCompleted) {
-                 const employee = INITIAL_EMPLOYEES.find(e => e.id === currentEmployeeId);
-                 if (employee) {
+            if (task && !task.isCompleted && shift) {
+                const completer = employees.find(e => e.id === actualCompleterId);
+                const shiftOwner = employees.find(e => e.id === shift.employeeId);
+
+                // Notify Shift Owner if someone else completes their task
+                // Logic: If the person who completed it (completerId) IS NOT the shift owner
+                if (completer && shiftOwner && actualCompleterId !== shift.employeeId) {
                      const newNotif: Notification = {
                          id: generateUUID(),
-                         type: 'task_completion',
-                         title: `${employee.name} 完成了任務`,
-                         message: task.description,
+                         type: 'help_received',
+                         title: `夥伴協助完成了任務`,
+                         message: `${completer.name} 協助完成了您的任務：${task.description}`,
                          timestamp: Date.now(),
                          isRead: false,
                          relatedShiftId: shiftId
                      };
-                     // Add new notification to top
                      setNotifications(prev => [newNotif, ...prev]);
-                 }
+                }
             }
         } catch (error) {
             console.error("Failed to generate notification:", error);
@@ -367,10 +408,16 @@ const App: React.FC = () => {
             if (s.id !== shiftId) return s;
             return {
                 ...s,
-                // Add safe array check (s.tasks || []) to prevent crashes on malformed data
-                tasks: (s.tasks || []).map(t => 
-                    t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t
-                )
+                tasks: (s.tasks || []).map(t => {
+                    if (t.id !== taskId) return t;
+                    const isNowCompleted = !t.isCompleted;
+                    return { 
+                        ...t, 
+                        isCompleted: isNowCompleted,
+                        // If marking as complete, record who did it. If unchecking, clear it.
+                        completedBy: isNowCompleted ? actualCompleterId : undefined
+                    };
+                })
             };
         }));
     };
@@ -380,14 +427,14 @@ const App: React.FC = () => {
     };
 
     // Derived State
-    const currentEmployee = INITIAL_EMPLOYEES.find(e => e.id === currentEmployeeId);
+    const currentEmployee = employees.find(e => e.id === currentEmployeeId);
     const unreadNotifications = notifications.filter(n => !n.isRead).length;
     const unreadFeedbacks = feedbacks.filter(f => !f.isRead).length;
 
     if (!isLoggedIn) {
         return (
             <LoginScreen 
-                employees={INITIAL_EMPLOYEES} 
+                employees={employees} 
                 ceoPasswordHash={ceoPassword} 
                 employeePasswords={employeePasswords}
                 onLogin={handleLogin}
@@ -440,6 +487,15 @@ const App: React.FC = () => {
                             還原
                         </button>
                     </div>
+
+                    {/* New: Employee Manager Button */}
+                    <button
+                        onClick={() => setIsEmployeeManagerOpen(true)}
+                        className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1"
+                        title="夥伴資料管理"
+                    >
+                        <Users size={20} />
+                    </button>
 
                     {/* Feedback Button */}
                     <button
@@ -612,7 +668,7 @@ const App: React.FC = () => {
                     <CalendarView 
                         currentDate={currentDate}
                         shifts={shifts}
-                        employees={INITIAL_EMPLOYEES}
+                        employees={employees} // Pass state
                         onAddShift={handleAddShift}
                         onEditShift={handleEditShift}
                     />
@@ -622,7 +678,7 @@ const App: React.FC = () => {
                             <Users size={20} className="text-[#d97706]" /> 營地夥伴概況
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {INITIAL_EMPLOYEES.map(emp => {
+                            {employees.map(emp => {
                                 const shiftCount = shifts.filter(s => s.employeeId === emp.id).length;
                                 return (
                                     <div key={emp.id} className="flex flex-col items-center p-4 rounded-xl border border-[#e7e5e4] bg-[#fafaf9] hover:border-[#d97706] transition-colors">
@@ -643,12 +699,13 @@ const App: React.FC = () => {
                         onSave={handleSaveShift}
                         onDelete={handleDeleteShift}
                         initialDate={modalDate}
-                        employees={INITIAL_EMPLOYEES}
+                        employees={employees} // Pass state
                         existingShift={editingShift}
                         taskCategories={taskCategories}
                         onUpdateTaskCategories={handleUpdateTaskCategories}
-                        shifts={shifts} // Passed for conflict detection
+                        shifts={shifts}
                         readOnly={isModalReadOnly}
+                        currentEmployeeId={currentEmployeeId}
                     />
 
                     <StatsModal
@@ -656,17 +713,25 @@ const App: React.FC = () => {
                         onClose={() => setIsStatsOpen(false)}
                         currentDate={currentDate}
                         shifts={shifts}
-                        employees={INITIAL_EMPLOYEES}
+                        employees={employees} // Pass state
                     />
 
                     <FeedbackModal 
                         isOpen={isFeedbackModalOpen}
                         onClose={() => setIsFeedbackModalOpen(false)}
                         feedbacks={feedbacks}
-                        employees={INITIAL_EMPLOYEES}
+                        employees={employees} // Pass state
                         onMarkAsRead={handleFeedbackMarkAsRead}
                         onDeleteFeedback={handleDeleteFeedback}
                         onDeleteAllRead={handleDeleteAllReadFeedbacks}
+                        onUpdateFeedback={handleUpdateFeedback}
+                    />
+
+                    <EmployeeManagerModal
+                        isOpen={isEmployeeManagerOpen}
+                        onClose={() => setIsEmployeeManagerOpen(false)}
+                        employees={employees}
+                        onUpdateEmployees={handleUpdateEmployees}
                     />
                 </>
             ) : (
@@ -680,19 +745,21 @@ const App: React.FC = () => {
                         onChangePassword={handleEmployeeChangePassword}
                         onSendFeedback={handleSendFeedback}
                         onViewShift={handleViewShift}
+                        allEmployees={employees} // Pass all employees to resolve names
                     />
                     <ShiftModal
                         isOpen={isModalOpen}
                         onClose={() => setIsModalOpen(false)}
-                        onSave={() => {}} // No-op
-                        onDelete={() => {}} // No-op
+                        onSave={() => {}} 
+                        onDelete={() => {}} 
                         initialDate={modalDate}
-                        employees={INITIAL_EMPLOYEES}
+                        employees={employees} // Pass state
                         existingShift={editingShift}
                         taskCategories={taskCategories}
-                        onUpdateTaskCategories={() => {}} // No-op
+                        onUpdateTaskCategories={() => {}} 
                         shifts={shifts}
                         readOnly={true}
+                        currentEmployeeId={currentEmployeeId}
                     />
                     </>
                 )

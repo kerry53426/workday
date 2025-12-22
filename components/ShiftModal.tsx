@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shift, Employee, Task, DEFAULT_TASK_TAGS, TaskCategory, generateUUID } from '../types';
-import { generateTasksForRole } from '../services/geminiService';
-import { X, Sparkles, Plus, Trash2, Loader2, CheckCircle2, Circle, Tent, Zap, Settings, GripVertical, Tag, Filter, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, Coffee } from 'lucide-react';
+import { Shift, Employee, Task, TaskCategory, generateUUID } from '../types';
+import { X, Plus, Trash2, CheckCircle2, Circle, Tent, Settings, GripVertical, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, Coffee, CheckSquare, HelpingHand, User } from 'lucide-react';
 
 interface ShiftModalProps {
     isOpen: boolean;
@@ -15,6 +14,7 @@ interface ShiftModalProps {
     onUpdateTaskCategories: (categories: TaskCategory[]) => void;
     shifts: Shift[]; // Add shifts for conflict detection
     readOnly?: boolean; // New: Read-only mode
+    currentEmployeeId?: string | null; // New: To identify who is interacting
 }
 
 export const ShiftModal: React.FC<ShiftModalProps> = ({
@@ -28,7 +28,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     taskCategories,
     onUpdateTaskCategories,
     shifts,
-    readOnly = false
+    readOnly = false,
+    currentEmployeeId
 }) => {
     // Replaced single employeeId with array for multi-select
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
@@ -41,26 +42,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const [tasks, setTasks] = useState<Task[]>([]);
     const [shiftLog, setShiftLog] = useState('');
     const [newTaskText, setNewTaskText] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
     const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
     const [conflictWarnings, setConflictWarnings] = useState<string[]>([]);
     
     // Drag and Drop State
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
     
+    // Task Completion Selection State
+    const [activeCompletionTaskId, setActiveCompletionTaskId] = useState<string | null>(null);
+    const selectionRef = useRef<HTMLDivElement>(null);
+
     // Category Management State
     const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
     const [isManagingTemplates, setIsManagingTemplates] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [newTaskInput, setNewTaskInput] = useState<{ [key: string]: string }>({});
-
-    // Tag Management State
-    const [availableTags, setAvailableTags] = useState<string[]>(DEFAULT_TASK_TAGS);
-    const [currentInputTags, setCurrentInputTags] = useState<string[]>([]);
-    const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
-    const [newCustomTag, setNewCustomTag] = useState('');
-    const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
-    const tagPickerRef = useRef<HTMLDivElement>(null);
 
     // Initialize state when modal opens
     useEffect(() => {
@@ -90,16 +86,23 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             setIsManagingTemplates(false);
             setActiveCategoryIndex(0);
             setDraggedTaskId(null);
-            setCurrentInputTags([]);
-            setActiveTagFilters([]);
-            setIsTagPickerOpen(false);
             setConflictWarnings([]);
-            
-            const existingTags = existingShift?.tasks?.flatMap(t => t.tags || []) || [];
-            const uniqueTags = Array.from(new Set([...DEFAULT_TASK_TAGS, ...existingTags]));
-            setAvailableTags(uniqueTags);
+            setActiveCompletionTaskId(null);
         }
     }, [isOpen, existingShift, employees, initialDate]);
+
+    // Handle click outside for completion selector
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (selectionRef.current && !selectionRef.current.contains(event.target as Node)) {
+                setActiveCompletionTaskId(null);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     // Check for conflicts whenever critical fields change
     useEffect(() => {
@@ -133,19 +136,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         setConflictWarnings(warnings);
     }, [selectedEmployeeIds, date, startTime, endTime, isOpen, shifts, existingShift, employees, readOnly]);
 
-    // Close tag picker when clicking outside
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (tagPickerRef.current && !tagPickerRef.current.contains(event.target as Node)) {
-                setIsTagPickerOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, []);
-
     const toggleEmployeeSelection = (id: string) => {
         if (readOnly) return;
         if (selectedEmployeeIds.includes(id)) {
@@ -155,91 +145,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         }
     };
 
-    const handleGenerateTasks = async () => {
-        if (readOnly) return;
-        setIsGenerating(true);
-        try {
-            const suggestedTasks = await generateTasksForRole(role, startTime, endTime);
-            const newTasks: Task[] = suggestedTasks.map(desc => ({
-                id: generateUUID(),
-                description: desc,
-                isCompleted: false,
-                tags: [],
-                assigneeIds: [] // Default to empty (all)
-            }));
-            setTasks([...tasks, ...newTasks]);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleAutoAssign = () => {
-        if (readOnly) return;
-        let suggestedTasks: string[] = [];
-        let autoTag: string | null = null;
-        const currentRole = role.trim();
-        const startHour = parseInt(startTime.split(':')[0]);
-
-        if (currentRole.includes('管家')) {
-            suggestedTasks = ["巡視帳篷設施狀況", "協助生火與戶外求生教學", "夜間營區安全巡邏", "即時解決住客需求", "檢查公共衛浴整潔"];
-            autoTag = "營務";
-        } else if (currentRole.includes('櫃台') || currentRole.includes('接待')) {
-            suggestedTasks = ["辦理住客入住手續 (Check-in)", "營區環境與設施介紹", "代訂餐點與活動預約", "接聽客服電話", "結帳與發票開立"];
-            autoTag = "櫃台";
-        } else if (currentRole.includes('清潔') || currentRole.includes('房務')) {
-            suggestedTasks = ["更換帳篷床單被套", "浴室廁所清潔消毒", "補齊衛浴備品", "清理垃圾與回收分類", "公共區域地面清掃"];
-            autoTag = "房務";
-        } else if (currentRole.includes('活動') || currentRole.includes('領隊')) {
-            suggestedTasks = ["集合遊客進行解說", "活動器材準備與檢查", "戶外安全維護", "帶動現場氣氛", "活動後場地復原"];
-            autoTag = "活動";
-        } else if (currentRole.includes('餐飲') || currentRole.includes('廚房')) {
-            suggestedTasks = ["食材清洗與備料", "餐點製作與擺盤", "出餐與桌邊服務", "廚房器具清潔歸位", "庫存盤點"];
-            autoTag = "餐飲";
-        }
-
-        if (suggestedTasks.length === 0) {
-            if (startHour < 11) {
-                suggestedTasks = ["早餐食材補貨與準備", "協助住客退房檢查 (Check-out)", "整理公共交誼廳", "早班交接事項確認"];
-            } else if (startHour < 15) {
-                suggestedTasks = ["帳篷內部深度清潔", "戶外桌椅擦拭", "準備迎賓下午茶點心", "園區景觀維護"];
-            } else if (startHour < 19) {
-                suggestedTasks = ["接待下午入住貴賓", "營火堆搭建準備", "晚餐時段巡視", "確認夜間照明設備"];
-            } else {
-                suggestedTasks = ["營火晚會協助", "星空導覽指引", "深夜靜音管制勸導", "夜間門禁安全確認"];
-            }
-        }
-
-        const newTasks: Task[] = suggestedTasks.map(desc => ({
-            id: generateUUID(),
-            description: desc,
-            isCompleted: false,
-            tags: autoTag ? [autoTag] : [],
-            assigneeIds: []
-        }));
-
-        setTasks(prev => [...prev, ...newTasks]);
-    };
-
     const handleAddTask = (description?: string) => {
         if (readOnly) return;
         const text = description || newTaskText;
         if (!text.trim()) return;
         
-        const tags = description ? [] : currentInputTags; 
-
         setTasks([...tasks, { 
             id: generateUUID(), 
             description: text, 
             isCompleted: false,
-            tags: tags,
+            tags: [],
             assigneeIds: []
         }]);
 
         if (!description) {
             setNewTaskText('');
-            setCurrentInputTags([]); 
         }
     };
 
@@ -248,11 +168,26 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         setTasks(tasks.filter(t => t.id !== taskId));
     };
 
-    const toggleTaskCompletion = (taskId: string) => {
+    // Modified to show selector when completing
+    const handleTaskCompletionClick = (task: Task) => {
         if (readOnly) return;
+        
+        if (task.isCompleted) {
+            // If unchecking, simply remove completed status and completedBy
+            setTasks(tasks.map(t => 
+                t.id === task.id ? { ...t, isCompleted: false, completedBy: undefined } : t
+            ));
+        } else {
+            // If checking, show selection UI
+            setActiveCompletionTaskId(task.id);
+        }
+    };
+
+    const confirmTaskCompletion = (taskId: string, completerId: string) => {
         setTasks(tasks.map(t => 
-            t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t
+            t.id === taskId ? { ...t, isCompleted: true, completedBy: completerId } : t
         ));
+        setActiveCompletionTaskId(null);
     };
 
     // Toggle specific assignee for a task
@@ -346,34 +281,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         onUpdateTaskCategories(newCategories);
     };
 
-    // --- Tag Handlers ---
-    const toggleInputTag = (tag: string) => {
-        if (readOnly) return;
-        if (currentInputTags.includes(tag)) {
-            setCurrentInputTags(currentInputTags.filter(t => t !== tag));
-        } else {
-            setCurrentInputTags([...currentInputTags, tag]);
-        }
-    };
-
-    const handleAddCustomTag = () => {
-        if (readOnly) return;
-        if (newCustomTag.trim() && !availableTags.includes(newCustomTag.trim())) {
-            const newTag = newCustomTag.trim();
-            setAvailableTags([...availableTags, newTag]);
-            setCurrentInputTags([...currentInputTags, newTag]);
-            setNewCustomTag('');
-        }
-    };
-
-    const toggleFilterTag = (tag: string) => {
-        if (activeTagFilters.includes(tag)) {
-            setActiveTagFilters(activeTagFilters.filter(t => t !== tag));
-        } else {
-            setActiveTagFilters([...activeTagFilters, tag]);
-        }
-    };
-
     // --- Save Logic ---
     const handleSave = () => {
         if (readOnly) return;
@@ -460,31 +367,31 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         alert('排班已複製並新增成功！');
     };
 
+    // Helper to get candidate employees for completion selection
+    const getCompletionCandidates = (task: Task) => {
+        // Start with explicitly assigned employees
+        let candidateIds = task.assigneeIds && task.assigneeIds.length > 0 
+            ? [...task.assigneeIds] 
+            : [...selectedEmployeeIds]; // If none assigned, all shift owners
+
+        // Add current user if not present (allows helping others)
+        if (currentEmployeeId && !candidateIds.includes(currentEmployeeId)) {
+            candidateIds.push(currentEmployeeId);
+        }
+
+        // Return unique employee objects
+        return Array.from(new Set(candidateIds))
+            .map(id => employees.find(e => e.id === id))
+            .filter((e): e is Employee => !!e);
+    };
+
     // Filter tasks logic
     const filteredTasks = tasks.filter(t => {
         const matchesCompletion = !showIncompleteOnly || !t.isCompleted;
-        const matchesTags = activeTagFilters.length === 0 || (t.tags && t.tags.some(tag => activeTagFilters.includes(tag)));
-        return matchesCompletion && matchesTags;
+        return matchesCompletion;
     });
 
-    const getTagColor = (tag: string) => {
-        const colors = [
-            'bg-red-100 text-red-700 border-red-200',
-            'bg-orange-100 text-orange-700 border-orange-200',
-            'bg-amber-100 text-amber-700 border-amber-200',
-            'bg-emerald-100 text-emerald-700 border-emerald-200',
-            'bg-teal-100 text-teal-700 border-teal-200',
-            'bg-sky-100 text-sky-700 border-sky-200',
-            'bg-indigo-100 text-indigo-700 border-indigo-200',
-            'bg-violet-100 text-violet-700 border-violet-200',
-            'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
-            'bg-rose-100 text-rose-700 border-rose-200',
-        ];
-        let hash = 0;
-        for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-        const index = Math.abs(hash) % colors.length;
-        return colors[index];
-    };
+    const getEmployeeName = (id: string) => employees.find(e => e.id === id)?.name || '夥伴';
 
     if (!isOpen) return null;
 
@@ -633,27 +540,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-2">
                                 <label className="block text-sm font-bold text-[#57534e]">工作項目</label>
-                                {!readOnly && !isManagingTemplates && (
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleAutoAssign}
-                                            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-full transition-colors border border-amber-200"
-                                        >
-                                            <Zap size={14} className="fill-amber-700" />
-                                            快速指派
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleGenerateTasks}
-                                            disabled={isGenerating}
-                                            className="flex items-center gap-1.5 text-xs font-medium text-[#064e3b] hover:text-[#065f46] bg-[#ecfdf5] px-2.5 py-1.5 rounded-full transition-colors disabled:opacity-50 border border-[#a7f3d0]"
-                                        >
-                                            {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                            AI 智慧建議
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         </div>
 
@@ -751,49 +637,23 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         </div>
                         )}
 
-                        {/* Filter Bar */}
-                        <div className="flex flex-col gap-2 mb-2">
-                             {/* Tag Filters */}
-                            {availableTags.length > 0 && tasks.length > 0 && (
-                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                                    <Filter size={12} className="text-gray-400 flex-shrink-0" />
-                                    {availableTags.map(tag => (
-                                        <button
-                                            key={tag}
-                                            onClick={() => toggleFilterTag(tag)}
-                                            className={`text-[10px] px-2 py-0.5 rounded-full border transition-all whitespace-nowrap ${
-                                                activeTagFilters.includes(tag)
-                                                ? 'bg-[#064e3b] text-white border-[#064e3b]'
-                                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                                            }`}
-                                        >
-                                            {tag}
-                                        </button>
-                                    ))}
-                                    {activeTagFilters.length > 0 && (
-                                        <button onClick={() => setActiveTagFilters([])} className="text-[10px] text-gray-400 underline whitespace-nowrap">清除</button>
-                                    )}
+                        {/* Completion Status Filter */}
+                        <div className="flex justify-between items-center px-0.5 mb-2">
+                            <span className="text-xs text-[#a8a29e] font-medium">
+                                {filteredTasks.filter(t => t.isCompleted).length}/{filteredTasks.length} 符合 (總計 {tasks.length})
+                            </span>
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-[#57534e] hover:text-[#064e3b] cursor-pointer transition-colors select-none">
+                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${showIncompleteOnly ? 'bg-[#064e3b] border-[#064e3b]' : 'bg-white border-[#d6d3d1]'}`}>
+                                    {showIncompleteOnly && <CheckSquare size={10} className="text-white" />}
                                 </div>
-                            )}
-
-                            {/* Completion Status Filter */}
-                            <div className="flex justify-between items-center px-0.5">
-                                <span className="text-xs text-[#a8a29e] font-medium">
-                                    {filteredTasks.filter(t => t.isCompleted).length}/{filteredTasks.length} 符合 (總計 {tasks.length})
-                                </span>
-                                <label className="flex items-center gap-1.5 text-xs font-medium text-[#57534e] hover:text-[#064e3b] cursor-pointer transition-colors select-none">
-                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${showIncompleteOnly ? 'bg-[#064e3b] border-[#064e3b]' : 'bg-white border-[#d6d3d1]'}`}>
-                                        {showIncompleteOnly && <CheckCircle2 size={10} className="text-white" />}
-                                    </div>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={showIncompleteOnly}
-                                        onChange={(e) => setShowIncompleteOnly(e.target.checked)}
-                                        className="hidden"
-                                    />
-                                    只顯示未完成
-                                </label>
-                            </div>
+                                <input 
+                                    type="checkbox" 
+                                    checked={showIncompleteOnly}
+                                    onChange={(e) => setShowIncompleteOnly(e.target.checked)}
+                                    className="hidden"
+                                />
+                                只顯示未完成
+                            </label>
                         </div>
                         
                         <div className="space-y-2 mb-3 max-h-48 overflow-y-auto bg-[#f5f5f4] p-2 rounded-lg border border-inner border-[#e7e5e4]">
@@ -805,24 +665,54 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             {filteredTasks.map(task => (
                                 <div 
                                     key={task.id} 
-                                    draggable={!readOnly && !showIncompleteOnly && activeTagFilters.length === 0}
+                                    draggable={!readOnly && !showIncompleteOnly}
                                     onDragStart={(e) => handleDragStart(e, task.id)}
                                     onDragOver={(e) => handleDragOver(e, task.id)}
                                     onDragEnd={handleDragEnd}
-                                    className={`flex items-start gap-2 bg-white p-2.5 rounded-md shadow-sm group hover:ring-1 hover:ring-[#d6d3d1] transition-all ${draggedTaskId === task.id ? 'opacity-40 border-2 border-dashed border-[#064e3b]' : ''}`}
+                                    className={`flex items-start gap-2 bg-white p-2.5 rounded-md shadow-sm group hover:ring-1 hover:ring-[#d6d3d1] transition-all relative ${draggedTaskId === task.id ? 'opacity-40 border-2 border-dashed border-[#064e3b]' : ''}`}
                                 >
-                                    {!readOnly && !showIncompleteOnly && activeTagFilters.length === 0 && (
+                                    {!readOnly && !showIncompleteOnly && (
                                         <div className="mt-0.5 cursor-move text-[#d6d3d1] hover:text-[#a8a29e] flex-shrink-0" title="拖曳排序">
                                             <GripVertical size={16} />
                                         </div>
                                     )}
-                                    <button
-                                        onClick={() => toggleTaskCompletion(task.id)}
-                                        disabled={readOnly}
-                                        className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0 ${readOnly ? 'cursor-default' : ''}`}
-                                    >
-                                        {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                    </button>
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => handleTaskCompletionClick(task)}
+                                            disabled={readOnly}
+                                            className={`mt-0.5 transition-colors ${task.isCompleted ? 'text-emerald-600' : 'text-[#d6d3d1] hover:text-[#a8a29e]'} flex-shrink-0 ${readOnly ? 'cursor-default' : ''}`}
+                                        >
+                                            {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                        </button>
+                                        
+                                        {/* Completer Selector Popover */}
+                                        {activeCompletionTaskId === task.id && (
+                                            <div 
+                                                ref={selectionRef}
+                                                className="absolute top-full left-0 mt-2 z-50 bg-white rounded-xl shadow-xl border border-gray-100 p-3 min-w-[200px] animate-in fade-in zoom-in-95"
+                                            >
+                                                <h4 className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1">
+                                                    <HelpingHand size={12} /> 是誰完成的？
+                                                </h4>
+                                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                                    {getCompletionCandidates(task).map(emp => (
+                                                        <button
+                                                            key={emp.id}
+                                                            onClick={() => confirmTaskCompletion(task.id, emp.id)}
+                                                            className="flex items-center gap-2 w-full p-2 hover:bg-emerald-50 rounded-lg transition-colors text-left"
+                                                        >
+                                                            <img src={emp.avatar} alt={emp.name} className="w-6 h-6 rounded-full" />
+                                                            <span className="text-sm font-medium text-gray-700">{emp.name}</span>
+                                                            {currentEmployeeId === emp.id && (
+                                                                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 rounded ml-auto">我</span>
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-start justify-between gap-2">
                                             <span className={`text-sm block break-words ${task.isCompleted ? 'text-[#a8a29e] line-through' : 'text-[#44403c]'}`}>
@@ -856,14 +746,11 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                                 </div>
                                             )}
                                         </div>
-
-                                        {task.tags && task.tags.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                {task.tags.map(tag => (
-                                                    <span key={tag} className={`text-[9px] px-1.5 py-0.5 rounded border ${getTagColor(tag)}`}>
-                                                        {tag}
-                                                    </span>
-                                                ))}
+                                        {/* Display Completed By Info (New) */}
+                                        {task.isCompleted && task.completedBy && (
+                                            <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400 bg-gray-50 inline-block px-1.5 py-0.5 rounded">
+                                                <HelpingHand size={10} />
+                                                <span>由 {getEmployeeName(task.completedBy)} 完成</span>
                                             </div>
                                         )}
                                     </div>
@@ -881,67 +768,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
                         {!readOnly && (
                         <div className="flex gap-2 mb-4">
-                            {/* Tag Selection Trigger */}
-                            <div className="relative" ref={tagPickerRef}>
-                                <button 
-                                    type="button"
-                                    onClick={() => setIsTagPickerOpen(!isTagPickerOpen)}
-                                    className={`p-2.5 rounded-lg border transition-colors flex items-center justify-center ${currentInputTags.length > 0 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-[#d6d3d1] text-gray-400 hover:text-gray-600'}`}
-                                    title="設定標籤"
-                                >
-                                    <Tag size={20} />
-                                    {currentInputTags.length > 0 && (
-                                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-                                            {currentInputTags.length}
-                                        </span>
-                                    )}
-                                </button>
-                                
-                                {isTagPickerOpen && (
-                                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50 animate-in fade-in zoom-in duration-200">
-                                        <h4 className="text-xs font-bold text-gray-500 mb-2">選擇任務標籤</h4>
-                                        <div className="flex flex-wrap gap-1.5 mb-3 max-h-40 overflow-y-auto">
-                                            {availableTags.map(tag => (
-                                                <button
-                                                    key={tag}
-                                                    type="button"
-                                                    onClick={() => toggleInputTag(tag)}
-                                                    className={`text-xs px-2 py-1 rounded-full border transition-all ${
-                                                        currentInputTags.includes(tag) 
-                                                        ? 'bg-amber-100 border-amber-300 text-amber-800 font-medium' 
-                                                        : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    {tag}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div className="flex gap-1 border-t border-gray-100 pt-2">
-                                            <input 
-                                                type="text" 
-                                                value={newCustomTag}
-                                                onChange={(e) => setNewCustomTag(e.target.value)}
-                                                placeholder="自訂標籤..."
-                                                className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded focus:border-amber-500 focus:outline-none"
-                                            />
-                                            <button 
-                                                onClick={handleAddCustomTag}
-                                                type="button"
-                                                className="bg-amber-500 text-white p-1 rounded hover:bg-amber-600"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
                             <input
                                 type="text"
                                 value={newTaskText}
                                 onChange={(e) => setNewTaskText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-                                placeholder="輸入任務... (可點選左側設定標籤)"
+                                placeholder="輸入任務..."
                                 className="flex-1 px-3 py-2.5 text-sm border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
                             />
                             <button
