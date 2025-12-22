@@ -5,13 +5,19 @@ import { ShiftModal } from './components/ShiftModal';
 import { EmployeePortal } from './components/EmployeePortal';
 import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
-import { Employee, Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES } from './types';
+import { Employee, Shift, INITIAL_EMPLOYEES, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, generateUUID } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Share2, Users, Tent, LogOut, ArrowLeftCircle, KeyRound, Settings, Calculator, Download, Upload, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Share2, Users, Tent, LogOut, ArrowLeftCircle, KeyRound, Settings, Calculator, Download, Upload, Database, Bell, Check, Trash2 } from 'lucide-react';
 
 // Mock data initialization
 const loadInitialShifts = (): Shift[] => {
     const saved = localStorage.getItem('sm_shifts');
+    if (saved) return JSON.parse(saved);
+    return [];
+};
+
+const loadNotifications = (): Notification[] => {
+    const saved = localStorage.getItem('sm_notifications');
     if (saved) return JSON.parse(saved);
     return [];
 };
@@ -51,14 +57,18 @@ const App: React.FC = () => {
     const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [shifts, setShifts] = useState<Shift[]>(loadInitialShifts());
-    const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(loadTaskCategories()); // New State
+    const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(loadTaskCategories()); 
+    const [notifications, setNotifications] = useState<Notification[]>(loadNotifications()); // Notification State
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isStatsOpen, setIsStatsOpen] = useState(false);
+    const [isNotificationOpen, setIsNotificationOpen] = useState(false); // Notification Dropdown State
     const [modalDate, setModalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [editingShift, setEditingShift] = useState<Shift | undefined>(undefined);
 
     // File input ref for restore
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const notificationRef = useRef<HTMLDivElement>(null);
 
     // Persistence
     useEffect(() => {
@@ -68,6 +78,23 @@ const App: React.FC = () => {
     useEffect(() => {
         localStorage.setItem('sm_task_categories', JSON.stringify(taskCategories));
     }, [taskCategories]);
+
+    useEffect(() => {
+        localStorage.setItem('sm_notifications', JSON.stringify(notifications));
+    }, [notifications]);
+
+    // Click outside to close notification dropdown
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+                setIsNotificationOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     // Handlers
     const handleLogin = (role: 'manager' | 'employee', employeeId?: string) => {
@@ -85,6 +112,7 @@ const App: React.FC = () => {
         setUserRole(null);
         setCurrentEmployeeId(null);
         setIsStatsOpen(false);
+        setIsNotificationOpen(false);
     };
 
     const handleChangePassword = () => {
@@ -109,11 +137,27 @@ const App: React.FC = () => {
         setTaskCategories(newCategories);
     };
 
+    // --- Notification Logic ---
+    const handleMarkAsRead = (id: string) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    };
+
+    const handleMarkAllRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    };
+
+    const handleClearNotifications = () => {
+        if (window.confirm('確定要清空所有通知嗎？')) {
+            setNotifications([]);
+        }
+    };
+
     // --- Backup & Restore Logic ---
     const handleExportData = () => {
         const data = {
             shifts,
-            taskCategories // Updated from commonTasks
+            taskCategories,
+            notifications
         };
         const dataStr = JSON.stringify(data, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
@@ -143,24 +187,28 @@ const App: React.FC = () => {
                 const content = e.target?.result as string;
                 const parsedData = JSON.parse(content);
                 
-                // Backward compatibility check or simple array check
                 const newShifts = Array.isArray(parsedData) ? parsedData : parsedData.shifts;
-                // Handle new vs old backup structure
                 let newTaskCategories = taskCategories;
+                let newNotifications = notifications;
+
                 if (parsedData.taskCategories) {
                     newTaskCategories = parsedData.taskCategories;
                 } else if (parsedData.commonTasks && Array.isArray(parsedData.commonTasks) && typeof parsedData.commonTasks[0] === 'string') {
-                    // Migrate old backup
                      newTaskCategories = [
                         ...DEFAULT_TASK_CATEGORIES,
                         { id: 'restored_legacy', name: '還原/舊資料', tasks: parsedData.commonTasks }
                     ];
                 }
 
+                if (parsedData.notifications) {
+                    newNotifications = parsedData.notifications;
+                }
+
                 if (Array.isArray(newShifts)) {
                     if (window.confirm(`確定要還原備份嗎？\n這將會覆蓋目前的 ${shifts.length} 筆排班資料。`)) {
                         setShifts(newShifts);
                         setTaskCategories(newTaskCategories);
+                        setNotifications(newNotifications);
                         alert("資料還原成功！");
                     }
                 } else {
@@ -172,7 +220,6 @@ const App: React.FC = () => {
             }
         };
         reader.readAsText(file);
-        // Reset input so same file can be selected again if needed
         event.target.value = '';
     };
 
@@ -211,12 +258,40 @@ const App: React.FC = () => {
     };
 
     const handleToggleTask = (shiftId: string, taskId: string) => {
-        setShifts(shifts.map(shift => {
-            if (shift.id !== shiftId) return shift;
+        // Find existing data first to generate notification if needed
+        const shift = shifts.find(s => s.id === shiftId);
+        const task = shift?.tasks.find(t => t.id === taskId);
+
+        // Logic for Notification: Only if Employee completes a task
+        // Wrapped in try-catch to ensure task toggling works even if notifications fail
+        try {
+            if (userRole === 'employee' && shift && task && !task.isCompleted) {
+                 const employee = INITIAL_EMPLOYEES.find(e => e.id === currentEmployeeId);
+                 if (employee) {
+                     const newNotif: Notification = {
+                         id: generateUUID(),
+                         type: 'task_completion',
+                         title: `${employee.name} 完成了任務`,
+                         message: task.description,
+                         timestamp: Date.now(),
+                         isRead: false,
+                         relatedShiftId: shiftId
+                     };
+                     // Add new notification to top
+                     setNotifications(prev => [newNotif, ...prev]);
+                 }
+            }
+        } catch (error) {
+            console.error("Failed to generate notification:", error);
+        }
+
+        setShifts(prevShifts => prevShifts.map(s => {
+            if (s.id !== shiftId) return s;
             return {
-                ...shift,
-                tasks: shift.tasks.map(task => 
-                    task.id === taskId ? { ...task, isCompleted: !task.isCompleted } : task
+                ...s,
+                // Add safe array check (s.tasks || []) to prevent crashes on malformed data
+                tasks: (s.tasks || []).map(t => 
+                    t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t
                 )
             };
         }));
@@ -228,6 +303,7 @@ const App: React.FC = () => {
 
     // Derived State
     const currentEmployee = INITIAL_EMPLOYEES.find(e => e.id === currentEmployeeId);
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     if (!isLoggedIn) {
         return (
@@ -294,6 +370,77 @@ const App: React.FC = () => {
                         <Calculator size={16} />
                         <span className="hidden lg:inline">工時統計</span>
                     </button>
+
+                    {/* Notification Bell */}
+                    <div className="relative mr-2" ref={notificationRef}>
+                        <button 
+                            onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                            className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors"
+                        >
+                            <Bell size={20} />
+                            {unreadCount > 0 && (
+                                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#064e3b]"></span>
+                            )}
+                        </button>
+
+                        {/* Notification Dropdown */}
+                        {isNotificationOpen && (
+                            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50">
+                                    <h4 className="font-bold text-gray-700 text-sm">通知中心 ({unreadCount})</h4>
+                                    <div className="flex gap-2">
+                                        {notifications.length > 0 && (
+                                            <button 
+                                                onClick={handleClearNotifications} 
+                                                className="text-gray-400 hover:text-red-500 p-1"
+                                                title="清空所有"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                        {unreadCount > 0 && (
+                                            <button 
+                                                onClick={handleMarkAllRead} 
+                                                className="text-xs text-[#064e3b] hover:underline flex items-center gap-1"
+                                            >
+                                                <Check size={12} /> 全部已讀
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="max-h-80 overflow-y-auto">
+                                    {notifications.length === 0 ? (
+                                        <div className="py-8 text-center text-gray-400 text-sm">
+                                            <Bell size={24} className="mx-auto mb-2 opacity-30" />
+                                            目前沒有新通知
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-100">
+                                            {notifications.map(notif => (
+                                                <div 
+                                                    key={notif.id} 
+                                                    onClick={() => handleMarkAsRead(notif.id)}
+                                                    className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/50' : ''}`}
+                                                >
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className={`text-sm font-bold ${!notif.isRead ? 'text-[#064e3b]' : 'text-gray-600'}`}>
+                                                            {notif.title}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
+                                                            {format(notif.timestamp, 'MM/dd HH:mm')}
+                                                        </span>
+                                                    </div>
+                                                    <p className={`text-xs ${!notif.isRead ? 'text-gray-800 font-medium' : 'text-gray-500'} break-words`}>
+                                                        {notif.message}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="flex items-center gap-1 bg-[#ffffff10] rounded-lg p-1 border border-[#ffffff20]">
                         <button 

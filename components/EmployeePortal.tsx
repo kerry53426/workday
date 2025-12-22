@@ -19,12 +19,9 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({ employee, shifts
     const upcomingShifts = sortedShifts.filter(s => new Date(s.date) >= new Date(new Date().setHours(0,0,0,0)));
 
     const handleTaskClick = (shiftId: string, task: Task) => {
-        const action = task.isCompleted ? "未完成" : "已完成";
-        const message = `確定將此任務標記為「${action}」嗎？`;
-        
-        if (window.confirm(message)) {
-            onToggleTask(shiftId, task.id);
-        }
+        // DIRECT TOGGLE: Removed window.confirm to improve responsiveness on mobile.
+        // Users can simply tap again to undo if they made a mistake.
+        onToggleTask(shiftId, task.id);
     };
 
     return (

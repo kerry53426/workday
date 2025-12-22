@@ -13,6 +13,7 @@ export interface Shift {
     date: string; // YYYY-MM-DD
     startTime: string; // HH:mm
     endTime: string; // HH:mm
+    breakDuration: number; // New: Break duration in minutes (unpaid)
     role: string;
     tasks: Task[];
     shiftLog?: string; // New field for notes/logs
@@ -32,6 +33,22 @@ export interface TaskCategory {
     name: string;
     tasks: string[];
 }
+
+export interface Notification {
+    id: string;
+    type: 'task_completion';
+    title: string;
+    message: string;
+    timestamp: number;
+    isRead: boolean;
+    relatedShiftId?: string;
+}
+
+// Helper to generate unique IDs safely across all browsers/environments
+export const generateUUID = () => {
+    // Use substring instead of substr (deprecated), and ensure uniqueness
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 // Nature/Camping Color Palette
 export const COLORS = [

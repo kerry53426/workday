@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shift, Employee, Task, DEFAULT_TASK_TAGS, TaskCategory } from '../types';
+import { Shift, Employee, Task, DEFAULT_TASK_TAGS, TaskCategory, generateUUID } from '../types';
 import { generateTasksForRole } from '../services/geminiService';
-import { X, Sparkles, Plus, Trash2, Loader2, CheckCircle2, Circle, Tent, Zap, Settings, Save, Edit2, GripVertical, Tag, Filter, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, User } from 'lucide-react';
+import { X, Sparkles, Plus, Trash2, Loader2, CheckCircle2, Circle, Tent, Zap, Settings, Save, Edit2, GripVertical, Tag, Filter, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, User, Coffee } from 'lucide-react';
 
 interface ShiftModalProps {
     isOpen: boolean;
@@ -34,6 +34,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const [date, setDate] = useState('');
     const [startTime, setStartTime] = useState('09:00');
     const [endTime, setEndTime] = useState('17:00');
+    const [breakDuration, setBreakDuration] = useState(60); // Default 60 mins break
     const [role, setRole] = useState('營地管家');
     const [tasks, setTasks] = useState<Task[]>([]);
     const [shiftLog, setShiftLog] = useState('');
@@ -67,9 +68,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 setDate(existingShift.date);
                 setStartTime(existingShift.startTime);
                 setEndTime(existingShift.endTime);
+                setBreakDuration(existingShift.breakDuration ?? 60);
                 setRole(existingShift.role);
-                // Ensure tags exist for older data
-                setTasks(existingShift.tasks.map(t => ({...t, tags: t.tags || []})));
+                // Ensure tags exist for older data, and safely map
+                setTasks((existingShift.tasks || []).map(t => ({...t, tags: t.tags || []})));
                 setShiftLog(existingShift.shiftLog || '');
             } else {
                 // Default to first employee if new, but allow clearing
@@ -77,6 +79,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 setDate(initialDate);
                 setStartTime('09:00');
                 setEndTime('17:00');
+                setBreakDuration(60);
                 setRole('營地管家');
                 setTasks([]);
                 setShiftLog('');
@@ -90,7 +93,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             setIsTagPickerOpen(false);
             setConflictWarnings([]);
             
-            const existingTags = existingShift?.tasks.flatMap(t => t.tags || []) || [];
+            const existingTags = existingShift?.tasks?.flatMap(t => t.tags || []) || [];
             const uniqueTags = Array.from(new Set([...DEFAULT_TASK_TAGS, ...existingTags]));
             setAvailableTags(uniqueTags);
         }
@@ -155,7 +158,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         try {
             const suggestedTasks = await generateTasksForRole(role, startTime, endTime);
             const newTasks: Task[] = suggestedTasks.map(desc => ({
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 description: desc,
                 isCompleted: false,
                 tags: [],
@@ -205,7 +208,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         }
 
         const newTasks: Task[] = suggestedTasks.map(desc => ({
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             description: desc,
             isCompleted: false,
             tags: autoTag ? [autoTag] : [],
@@ -222,7 +225,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         const tags = description ? [] : currentInputTags; 
 
         setTasks([...tasks, { 
-            id: crypto.randomUUID(), 
+            id: generateUUID(), 
             description: text, 
             isCompleted: false,
             tags: tags,
@@ -288,7 +291,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const handleAddCategory = () => {
         if (newCategoryName.trim()) {
             onUpdateTaskCategories([...taskCategories, {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 name: newCategoryName.trim(),
                 tasks: []
             }]);
@@ -371,7 +374,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             // If editing an existing shift and this iteration matches the original employee, 
             // keep the ID. Otherwise (new employee added to existing shift), create new ID.
             const isOriginalEmployee = existingShift && existingShift.employeeId === empId;
-            const shiftId = isOriginalEmployee ? existingShift.id : crypto.randomUUID();
+            const shiftId = isOriginalEmployee ? existingShift.id : generateUUID();
             
             // Filter tasks: include if assigneeIds is empty OR includes this employee
             const personalTasks = tasks.filter(t => {
@@ -379,7 +382,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 return t.assigneeIds.includes(empId);
             }).map(t => ({
                 ...t,
-                id: isOriginalEmployee ? t.id : crypto.randomUUID() // Deep copy logic for ID
+                id: isOriginalEmployee ? t.id : generateUUID() // Deep copy logic for ID
             }));
 
             const shiftData = {
@@ -388,6 +391,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 date: date || initialDate,
                 startTime,
                 endTime,
+                breakDuration,
                 role,
                 tasks: personalTasks,
                 shiftLog,
@@ -415,17 +419,18 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 return t.assigneeIds.includes(empId);
             }).map(t => ({
                 ...t, 
-                id: crypto.randomUUID(), 
+                id: generateUUID(), 
                 isCompleted: false
             }));
 
              // Create entirely new shifts
              const shiftData = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 employeeId: empId,
                 date: date || initialDate,
                 startTime,
                 endTime,
+                breakDuration,
                 role,
                 tasks: personalTasks,
                 shiftLog,
@@ -467,9 +472,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#064e3b] bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#fcfaf8] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 border-4 border-[#e7e5e4]">
-                <div className="px-6 py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-[#064e3b] bg-opacity-70 backdrop-blur-sm">
+            <div className="bg-[#fcfaf8] w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl sm:max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 sm:border-4 border-[#e7e5e4]">
+                {/* Header - Fixed */}
+                <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4] flex-shrink-0">
                     <h3 className="text-lg font-bold text-[#44403c] flex items-center gap-2">
                         <div className="p-1 bg-[#d97706] text-white rounded-md">
                             <Tent size={18} />
@@ -483,16 +489,17 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                                 className="text-xs flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-600 transition-colors"
                                 title="複製目前設定為新排班"
                              >
-                                <Copy size={14} /> 複製
+                                <Copy size={14} /> <span className="hidden sm:inline">複製</span>
                              </button>
                         )}
-                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-                            <X size={20} />
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                            <X size={24} />
                         </button>
                     </div>
                 </div>
 
-                <div className="p-6 space-y-5">
+                {/* Body - Scrollable */}
+                <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
                     {/* Conflict Warnings */}
                     {conflictWarnings.length > 0 && (
                         <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded text-amber-800 text-sm flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
@@ -568,15 +575,32 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-bold text-[#57534e] mb-1.5">任務角色</label>
-                        <input
-                            type="text"
-                            value={role}
-                            onChange={(e) => setRole(e.target.value)}
-                            placeholder="例如：營地管家、活動帶領、櫃台接待"
-                            className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-1">
+                            <label className="block text-sm font-bold text-[#57534e] mb-1.5 flex items-center gap-1">
+                                <Coffee size={14} className="text-amber-600"/>
+                                休息時間 (分)
+                                <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1 rounded ml-1">不計薪</span>
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={breakDuration}
+                                onChange={(e) => setBreakDuration(Number(e.target.value))}
+                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                            />
+                        </div>
+                        <div className="col-span-1">
+                            <label className="block text-sm font-bold text-[#57534e] mb-1.5">任務角色</label>
+                            <input
+                                type="text"
+                                value={role}
+                                onChange={(e) => setRole(e.target.value)}
+                                placeholder="例如：營地管家"
+                                className="w-full px-3 py-2.5 bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b]"
+                            />
+                        </div>
                     </div>
 
                     {/* Tasks Section */}
@@ -913,7 +937,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     </div>
                 </div>
 
-                <div className="px-6 py-4 bg-[#f5f5f4] border-t border-[#e7e5e4] flex justify-between">
+                {/* Footer - Fixed */}
+                <div className="px-4 py-3 sm:px-6 sm:py-4 bg-[#f5f5f4] border-t border-[#e7e5e4] flex justify-between flex-shrink-0">
                     {existingShift ? (
                          <button
                          onClick={() => {
@@ -922,7 +947,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                          }}
                          className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium text-sm px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
                      >
-                         <Trash2 size={16} /> 刪除排班
+                         <Trash2 size={16} /> <span className="hidden sm:inline">刪除排班</span>
                      </button>
                     ) : <div></div>}
                    
@@ -937,7 +962,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                             onClick={handleSave}
                             className="px-6 py-2 text-sm font-medium text-white bg-[#d97706] rounded-lg hover:bg-[#b45309] shadow-md transition-colors"
                         >
-                            {existingShift ? '儲存變更' : '確認排班'}
+                            {existingShift ? '儲存' : '確認'}
                         </button>
                     </div>
                 </div>
