@@ -318,10 +318,15 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                                                         <Clock size={18} className="text-[#d97706]" />
                                                         {shift.startTime} - {shift.endTime}
                                                     </div>
-                                                    {shift.breakDuration > 0 && (
+                                                    {((shift.breakStartTime && shift.breakEndTime) || (shift.breakDuration && shift.breakDuration > 0)) && (
                                                         <div className="flex items-center gap-1.5 text-xs text-[#78716c] mt-1.5 ml-0.5">
                                                             <Coffee size={14} className="text-[#a8a29e]" />
-                                                            <span className="font-medium">休息 {shift.breakDuration} 分鐘</span>
+                                                            <span className="font-medium">
+                                                                {(shift.breakStartTime && shift.breakEndTime) 
+                                                                    ? `休息 ${shift.breakStartTime}-${shift.breakEndTime}`
+                                                                    : `休息 ${shift.breakDuration} 分鐘`
+                                                                }
+                                                            </span>
                                                         </div>
                                                     )}
                                                 </div>

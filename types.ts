@@ -14,7 +14,10 @@ export interface Shift {
     date: string; // YYYY-MM-DD
     startTime: string; // HH:mm
     endTime: string; // HH:mm
-    breakDuration: number; // Break duration in minutes (unpaid)
+    // Changed from breakDuration number to specific times
+    breakStartTime?: string; // HH:mm
+    breakEndTime?: string;   // HH:mm
+    breakDuration?: number; // Keep for legacy compatibility (calculated automatically now)
     role: string;
     tasks: Task[];
     shiftLog?: string; // New field for notes/logs

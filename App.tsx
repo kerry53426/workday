@@ -475,18 +475,33 @@ const App: React.FC = () => {
                 const completer = employees.find(e => e.id === actualCompleterId);
                 const shiftOwner = employees.find(e => e.id === shift.employeeId);
 
-                if (completer && shiftOwner && actualCompleterId !== shift.employeeId) {
-                     const newNotif: Notification = {
+                // 1. Notification for CEO/Manager (New Feature)
+                if (completer) {
+                     const managerNotif: Notification = {
                          id: generateUUID(),
-                         type: 'help_received',
-                         title: `夥伴協助完成了任務`,
-                         message: `${completer.name} 協助完成了您的任務：${task.description}`,
+                         type: 'task_completion',
+                         title: `任務完成回報`,
+                         message: `${completer.name} 已完成任務：${task.description}`,
                          timestamp: Date.now(),
                          isRead: false,
                          relatedShiftId: shiftId
                      };
-                     nextNotifications = [newNotif, ...nextNotifications];
-                     setNotifications(nextNotifications);
+                     // Add new notification to the top
+                     nextNotifications = [managerNotif, ...nextNotifications];
+                }
+
+                // 2. Notification for Peer Support (Help Received)
+                if (completer && shiftOwner && actualCompleterId !== shift.employeeId) {
+                     const helpNotif: Notification = {
+                         id: generateUUID(),
+                         type: 'help_received',
+                         title: `夥伴協助完成了任務`,
+                         message: `${completer.name} 協助完成了您的任務：${task.description}`,
+                         timestamp: Date.now() + 1, // Ensure unique timestamp order
+                         isRead: false,
+                         relatedShiftId: shiftId
+                     };
+                     nextNotifications = [helpNotif, ...nextNotifications];
                 }
             }
         } catch (error) { console.error(error); }

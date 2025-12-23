@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Shift, Employee, Task, TaskCategory, generateUUID } from '../types';
-import { X, Plus, Trash2, CheckCircle2, Circle, Tent, Settings, GripVertical, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, Coffee, CheckSquare, HelpingHand, User } from 'lucide-react';
+import { X, Plus, Trash2, CheckCircle2, Circle, Tent, Settings, GripVertical, StickyNote, FolderPlus, PenLine, Copy, AlertTriangle, Check, Coffee, CheckSquare, HelpingHand, User, Ban } from 'lucide-react';
 
 interface ShiftModalProps {
     isOpen: boolean;
@@ -37,13 +37,20 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const [date, setDate] = useState('');
     const [startTime, setStartTime] = useState('09:00');
     const [endTime, setEndTime] = useState('17:00');
-    const [breakDuration, setBreakDuration] = useState(60); // Default 60 mins break
+    
+    // New: Specific break times
+    const [breakStartTime, setBreakStartTime] = useState('');
+    const [breakEndTime, setBreakEndTime] = useState('');
+    
     const [role, setRole] = useState('營地管家');
     const [tasks, setTasks] = useState<Task[]>([]);
     const [shiftLog, setShiftLog] = useState('');
     const [newTaskText, setNewTaskText] = useState('');
     const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
+    
+    // Validation State
     const [conflictWarnings, setConflictWarnings] = useState<string[]>([]);
+    const [blockingErrors, setBlockingErrors] = useState<string[]>([]); // New: Errors that prevent saving
     
     // Drag and Drop State
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -66,7 +73,13 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 setDate(existingShift.date);
                 setStartTime(existingShift.startTime);
                 setEndTime(existingShift.endTime);
-                setBreakDuration(existingShift.breakDuration ?? 60);
+                
+                // Initialize break times
+                // If existing shift has specific times, use them
+                // If only breakDuration exists (legacy), we leave inputs empty or try to guess (but safer to leave empty)
+                setBreakStartTime(existingShift.breakStartTime || '');
+                setBreakEndTime(existingShift.breakEndTime || '');
+                
                 setRole(existingShift.role);
                 // Ensure tags exist for older data, and safely map
                 setTasks((existingShift.tasks || []).map(t => ({...t, tags: t.tags || []})));
@@ -77,7 +90,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 setDate(initialDate);
                 setStartTime('09:00');
                 setEndTime('17:00');
-                setBreakDuration(60);
+                setBreakStartTime('12:00'); // Default break suggestion
+                setBreakEndTime('13:00');
                 setRole('營地管家');
                 setTasks([]);
                 setShiftLog('');
@@ -87,6 +101,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             setActiveCategoryIndex(0);
             setDraggedTaskId(null);
             setConflictWarnings([]);
+            setBlockingErrors([]);
             setActiveCompletionTaskId(null);
         }
     }, [isOpen, existingShift, employees, initialDate]);
@@ -109,6 +124,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         if (!isOpen || selectedEmployeeIds.length === 0 || !date || !startTime || !endTime || readOnly) return;
 
         const warnings: string[] = [];
+        const errors: string[] = [];
         const currentStart = parseInt(startTime.replace(':', ''));
         const currentEnd = parseInt(endTime.replace(':', ''));
 
@@ -116,25 +132,58 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             const emp = employees.find(e => e.id === empId);
             if (!emp) return;
 
-            const conflictingShift = shifts.find(s => {
-                if (s.id === existingShift?.id && s.employeeId === empId) return false; // Don't check against self if editing
+            // 1. Strict Check: Does this employee already have a shift on this day?
+            // Exclude the current shift if we are editing
+            const existingShiftOnDate = shifts.find(s => {
+                if (s.id === existingShift?.id && s.employeeId === empId) return false; // Editing self
                 if (s.employeeId !== empId) return false;
-                if (s.date !== date) return false;
-
-                const sStart = parseInt(s.startTime.replace(':', ''));
-                const sEnd = parseInt(s.endTime.replace(':', ''));
-
-                // Check overlap
-                return (currentStart < sEnd && currentEnd > sStart);
+                return s.date === date;
             });
 
-            if (conflictingShift) {
-                warnings.push(`注意：${emp.name} 在 ${conflictingShift.startTime}-${conflictingShift.endTime} 已有「${conflictingShift.role}」排班。`);
+            if (existingShiftOnDate) {
+                errors.push(`禁止重複排班：${emp.name} 在 ${date} 已經有「${existingShiftOnDate.role}」的班次了。每人每日限排一班。`);
+            } else {
+                // 2. Overlap Check (Only relevant if we relax the one-shift-per-day rule, keeping logic just in case)
+                // Since we block on date, this is theoretically unreachable for now, but good for robustness
+                const overlappingShift = shifts.find(s => {
+                    if (s.id === existingShift?.id && s.employeeId === empId) return false;
+                    if (s.employeeId !== empId) return false;
+                    
+                    // Different date? No conflict
+                    if (s.date !== date) return false;
+
+                    const sStart = parseInt(s.startTime.replace(':', ''));
+                    const sEnd = parseInt(s.endTime.replace(':', ''));
+
+                    return (currentStart < sEnd && currentEnd > sStart);
+                });
+
+                if (overlappingShift) {
+                     warnings.push(`注意：${emp.name} 的時段與現有排班重疊。`);
+                }
             }
         });
 
+        // Validate Break Times
+        if (breakStartTime && breakEndTime) {
+            const bStart = parseInt(breakStartTime.replace(':', ''));
+            const bEnd = parseInt(breakEndTime.replace(':', ''));
+            
+            if (bEnd <= bStart) {
+                errors.push("休息結束時間必須晚於開始時間");
+            }
+            if (bStart < currentStart || bEnd > currentEnd) {
+                errors.push("休息時間必須在排班時段內");
+            }
+        } else if (breakStartTime && !breakEndTime) {
+             errors.push("請設定休息結束時間");
+        } else if (!breakStartTime && breakEndTime) {
+             errors.push("請設定休息開始時間");
+        }
+
         setConflictWarnings(warnings);
-    }, [selectedEmployeeIds, date, startTime, endTime, isOpen, shifts, existingShift, employees, readOnly]);
+        setBlockingErrors(errors);
+    }, [selectedEmployeeIds, date, startTime, endTime, breakStartTime, breakEndTime, isOpen, shifts, existingShift, employees, readOnly]);
 
     const toggleEmployeeSelection = (id: string) => {
         if (readOnly) return;
@@ -284,12 +333,24 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     // --- Save Logic ---
     const handleSave = () => {
         if (readOnly) return;
+        if (blockingErrors.length > 0) {
+            alert("請先解決排班衝突（紅色警告）後再儲存。");
+            return;
+        }
         if (selectedEmployeeIds.length === 0) {
             alert("請至少選擇一位夥伴！");
             return;
         }
 
         const newShifts: Shift[] = [];
+        
+        // Calculate break duration in minutes for legacy support
+        let calculatedBreakDuration = 0;
+        if (breakStartTime && breakEndTime) {
+             const [bsh, bsm] = breakStartTime.split(':').map(Number);
+             const [beh, bem] = breakEndTime.split(':').map(Number);
+             calculatedBreakDuration = (beh * 60 + bem) - (bsh * 60 + bsm);
+        }
 
         selectedEmployeeIds.forEach(empId => {
             const selectedEmployee = employees.find(e => e.id === empId);
@@ -308,13 +369,15 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 id: isOriginalEmployee ? t.id : generateUUID() // Deep copy logic for ID
             }));
 
-            const shiftData = {
+            const shiftData: Shift = {
                 id: shiftId,
                 employeeId: empId,
                 date: date || initialDate,
                 startTime,
                 endTime,
-                breakDuration,
+                breakStartTime: breakStartTime || undefined,
+                breakEndTime: breakEndTime || undefined,
+                breakDuration: calculatedBreakDuration,
                 role,
                 tasks: personalTasks,
                 shiftLog,
@@ -330,10 +393,22 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     // --- Duplicate Logic ---
     const handleDuplicate = () => {
         if (readOnly) return;
+        if (blockingErrors.length > 0) {
+             alert("複製前請先確認無排班衝突。");
+             return;
+        }
         if (selectedEmployeeIds.length === 0) return;
         
         const newShifts: Shift[] = [];
         
+        // Calculate break duration in minutes for legacy support
+        let calculatedBreakDuration = 0;
+        if (breakStartTime && breakEndTime) {
+             const [bsh, bsm] = breakStartTime.split(':').map(Number);
+             const [beh, bem] = breakEndTime.split(':').map(Number);
+             calculatedBreakDuration = (beh * 60 + bem) - (bsh * 60 + bsm);
+        }
+
         selectedEmployeeIds.forEach(empId => {
              const selectedEmployee = employees.find(e => e.id === empId);
              
@@ -348,13 +423,15 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             }));
 
              // Create entirely new shifts
-             const shiftData = {
+             const shiftData: Shift = {
                 id: generateUUID(),
                 employeeId: empId,
                 date: date || initialDate,
                 startTime,
                 endTime,
-                breakDuration,
+                breakStartTime: breakStartTime || undefined,
+                breakEndTime: breakEndTime || undefined,
+                breakDuration: calculatedBreakDuration,
                 role,
                 tasks: personalTasks,
                 shiftLog,
@@ -425,7 +502,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
                 {/* Body - Scrollable */}
                 <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
-                    {/* Conflict Warnings */}
+                    {/* Blocking Errors (Strict Validation) */}
+                    {!readOnly && blockingErrors.length > 0 && (
+                        <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded text-red-800 text-sm flex flex-col gap-1 animate-in fade-in slide-in-from-top-2 shadow-sm">
+                            <div className="font-bold flex items-center gap-1">
+                                <Ban size={16} /> 無法儲存：
+                            </div>
+                            {blockingErrors.map((err, idx) => (
+                                <div key={idx} className="flex items-start gap-2 pl-1">
+                                    <span>• {err}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Conflict Warnings (Advisory) */}
                     {!readOnly && conflictWarnings.length > 0 && (
                         <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded text-amber-800 text-sm flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
                             {conflictWarnings.map((warning, idx) => (
@@ -506,33 +597,48 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-1">
-                            <label className="block text-sm font-bold text-[#57534e] mb-1.5 flex items-center gap-1">
-                                <Coffee size={14} className="text-amber-600"/>
-                                休息 (分)
-                            </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="10"
-                                value={breakDuration}
-                                disabled={readOnly}
-                                onChange={(e) => setBreakDuration(Number(e.target.value))}
-                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
-                            />
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <label className="block text-sm font-bold text-[#57534e] mb-2 flex items-center gap-1">
+                            <Coffee size={14} className="text-amber-600"/>
+                            休息時間 (空班)
+                        </label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">休息開始</label>
+                                <input
+                                    type="time"
+                                    value={breakStartTime}
+                                    disabled={readOnly}
+                                    onChange={(e) => setBreakStartTime(e.target.value)}
+                                    className={`w-full px-2 py-2 text-sm bg-white border border-[#d6d3d1] rounded focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100' : ''}`}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">休息結束</label>
+                                <input
+                                    type="time"
+                                    value={breakEndTime}
+                                    disabled={readOnly}
+                                    onChange={(e) => setBreakEndTime(e.target.value)}
+                                    className={`w-full px-2 py-2 text-sm bg-white border border-[#d6d3d1] rounded focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100' : ''}`}
+                                />
+                            </div>
                         </div>
-                        <div className="col-span-1">
-                            <label className="block text-sm font-bold text-[#57534e] mb-1.5">任務角色</label>
-                            <input
-                                type="text"
-                                value={role}
-                                disabled={readOnly}
-                                onChange={(e) => setRole(e.target.value)}
-                                placeholder="例如：營地管家"
-                                className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
-                            />
+                        <div className="text-[10px] text-gray-400 mt-1 text-right">
+                             * 休息時間不計入薪資工時
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-bold text-[#57534e] mb-1.5">任務角色</label>
+                        <input
+                            type="text"
+                            value={role}
+                            disabled={readOnly}
+                            onChange={(e) => setRole(e.target.value)}
+                            placeholder="例如：營地管家"
+                            className={`w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm bg-white border border-[#d6d3d1] rounded-lg focus:ring-[#064e3b] focus:border-[#064e3b] ${readOnly ? 'bg-gray-100 text-gray-500' : ''}`}
+                        />
                     </div>
 
                     {/* Tasks Section */}
@@ -827,7 +933,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                         {!readOnly && (
                         <button
                             onClick={handleSave}
-                            className="flex-1 sm:flex-none px-6 py-2.5 sm:py-2 text-sm font-medium text-white bg-[#d97706] rounded-lg hover:bg-[#b45309] shadow-md transition-colors"
+                            disabled={blockingErrors.length > 0}
+                            className={`flex-1 sm:flex-none px-6 py-2.5 sm:py-2 text-sm font-medium text-white rounded-lg shadow-md transition-colors ${blockingErrors.length > 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#d97706] hover:bg-[#b45309]'}`}
                         >
                             {existingShift ? '儲存' : '確認'}
                         </button>

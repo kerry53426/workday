@@ -233,12 +233,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                                         </div>
                                                         
                                                         <div className="flex justify-end sm:justify-start col-span-1">
-                                                            {shift.breakDuration && shift.breakDuration > 0 ? (
+                                                            {(shift.breakStartTime && shift.breakEndTime) ? (
+                                                                 <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
+                                                                    <Coffee size={14} />
+                                                                    <span>休 {shift.breakStartTime}-{shift.breakEndTime}</span>
+                                                                </div>
+                                                            ) : (shift.breakDuration && shift.breakDuration > 0 ? (
                                                                 <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
                                                                     <Coffee size={14} />
                                                                     <span>休 {shift.breakDuration}分</span>
                                                                 </div>
-                                                            ) : <div />}
+                                                            ) : <div />)}
                                                         </div>
 
                                                         <div className="col-span-2">

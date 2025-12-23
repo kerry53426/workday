@@ -42,7 +42,16 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, current
             
             empShifts.forEach(s => {
                 const grossDuration = calculateDuration(s.startTime, s.endTime);
-                const breakInHours = (s.breakDuration || 0) / 60;
+                
+                // Calculate Break Duration
+                let breakInHours = 0;
+                if (s.breakStartTime && s.breakEndTime) {
+                    breakInHours = calculateDuration(s.breakStartTime, s.breakEndTime);
+                } else if (s.breakDuration) {
+                    // Fallback to old format
+                    breakInHours = s.breakDuration / 60;
+                }
+
                 let netDuration = grossDuration - breakInHours;
                 if (netDuration < 0) netDuration = 0;
 
