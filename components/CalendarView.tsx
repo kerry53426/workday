@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { format, startOfWeek, addDays, isSameDay, isBefore } from 'date-fns';
+
+import React, { useState, useMemo } from 'react';
+import { format, startOfWeek, addDays, isSameDay, isBefore, parseISO } from 'date-fns';
 import { Shift, Employee } from '../types';
-import { Plus, Clock, Users, Coffee, LayoutList, Grid3X3, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Clock, Search, LayoutGrid, Layers, Calendar as CalendarIcon, Star, CheckSquare, ListChecks } from 'lucide-react';
 
 interface CalendarViewProps {
     currentDate: Date;
@@ -18,256 +19,140 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     onAddShift, 
     onEditShift 
 }) => {
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
+    const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid');
+    const [searchQuery, setSearchQuery] = useState('');
+    
+    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 });
     const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
     const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
 
+    const filteredShifts = useMemo(() => {
+        if (!searchQuery.trim()) return shifts;
+        const query = searchQuery.toLowerCase();
+        return shifts.filter(s => {
+            const empName = employees.find(e => e.id === s.employeeId)?.name.toLowerCase() || '';
+            const role = s.role.toLowerCase();
+            const taskMatch = s.tasks.some(t => t.description.toLowerCase().includes(query));
+            return empName.includes(query) || role.includes(query) || taskMatch;
+        });
+    }, [shifts, searchQuery, employees]);
+
     const getShiftsForDay = (date: Date) => {
-        return shifts.filter(s => isSameDay(new Date(s.date), date));
+        return filteredShifts.filter(s => isSameDay(parseISO(s.date), date));
     };
 
-    const getEmployeeName = (id: string) => {
-        return employees.find(e => e.id === id)?.name || '未知';
-    };
-
-    const getEmployeeAvatar = (id: string) => {
-        return employees.find(e => e.id === id)?.avatar;
-    };
+    const getEmployee = (id: string) => employees.find(e => e.id === id);
+    const HOURS = Array.from({ length: 15 }, (_, i) => i + 8);
 
     return (
         <div className="space-y-4">
-            {/* View Toggle */}
-            <div className="flex justify-end mb-2">
-                <div className="bg-white p-1 rounded-lg border border-[#e7e5e4] shadow-sm flex items-center gap-1">
-                    <button
-                        onClick={() => setViewMode('grid')}
-                        className={`p-1.5 sm:p-2 rounded-md transition-all flex items-center gap-2 text-xs sm:text-sm font-medium ${viewMode === 'grid' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
-                    >
-                        <Grid3X3 size={16} />
-                        <span className="inline">週曆</span>
-                    </button>
-                    <button
-                        onClick={() => setViewMode('list')}
-                        className={`p-1.5 sm:p-2 rounded-md transition-all flex items-center gap-2 text-xs sm:text-sm font-medium ${viewMode === 'list' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
-                    >
-                        <LayoutList size={16} />
-                        <span className="inline">清單</span>
-                    </button>
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-[#e7e5e4]">
+                <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input type="text" placeholder="搜尋夥伴或職位..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs" />
+                </div>
+                <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
+                    <button onClick={() => setViewMode('grid')} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-2 transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-[#064e3b]' : 'text-gray-500'}`}><LayoutGrid size={14} /> 網格模式</button>
+                    <button onClick={() => setViewMode('timeline')} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-2 transition-all ${viewMode === 'timeline' ? 'bg-white shadow-sm text-[#064e3b]' : 'text-gray-500'}`}><Layers size={14} /> 時間軸模式</button>
                 </div>
             </div>
 
             {viewMode === 'grid' ? (
-                // GRID VIEW
-                <div className="bg-white rounded-xl shadow-md border border-[#e7e5e4] overflow-hidden">
-                    <div className="overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                        {/* Minimum width ensures grid doesn't squash on mobile, requiring horizontal scroll */}
-                        <div className="min-w-[700px] sm:min-w-[800px]">
-                            {/* Header Row */}
-                            <div className="grid grid-cols-7 border-b border-[#e7e5e4] bg-[#fafaf9]">
-                                {weekDays.map((day, i) => {
-                                    const isToday = isSameDay(day, new Date());
-                                    const dailyShifts = getShiftsForDay(day);
-                                    const staffCount = new Set(dailyShifts.map(s => s.employeeId)).size;
-
-                                    return (
-                                        <div key={i} className={`p-2 sm:p-4 text-center border-r border-[#e7e5e4] last:border-r-0 ${isToday ? 'bg-[#ecfdf5]' : ''}`}>
-                                            <div className="text-xs font-bold text-[#78716c] uppercase tracking-wider mb-1">
-                                                {dayNames[i]}
-                                            </div>
-                                            <div className={`text-base sm:text-lg font-bold ${isToday ? 'text-[#059669]' : 'text-[#44403c]'}`}>
-                                                {format(day, 'd')}
-                                            </div>
-                                            {staffCount > 0 && (
-                                                <div className="mt-1 sm:mt-2 flex justify-center">
-                                                    <span className="inline-flex items-center gap-1 bg-stone-200 text-stone-600 text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-bold" title="今日值班人數">
-                                                        <Users size={10} /> {staffCount}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Grid Body */}
-                            <div className="grid grid-cols-7 min-h-[400px] sm:min-h-[500px] bg-[#fffbeb] bg-opacity-30">
-                                {weekDays.map((day, i) => {
-                                    const dayShifts = getShiftsForDay(day);
-                                    const formattedDate = format(day, 'yyyy-MM-dd');
-                                    const isPast = isBefore(day, new Date(new Date().setHours(0,0,0,0)));
-
-                                    return (
-                                        <div 
-                                            key={i} 
-                                            className={`border-r border-[#e7e5e4] last:border-r-0 p-1 sm:p-2 relative group hover:bg-[#fafaf9] transition-colors ${isPast ? 'bg-[#f5f5f4]/50' : ''}`}
-                                        >
-                                            <div className={`space-y-1.5 sm:space-y-2 ${isPast ? 'opacity-60 grayscale-[30%]' : ''}`}>
-                                                {dayShifts.map(shift => {
-                                                    const completedTasks = shift.tasks.filter(t => t.isCompleted).length;
-                                                    const totalTasks = shift.tasks.length;
-                                                    const isAllDone = totalTasks > 0 && completedTasks === totalTasks;
-                                                    const progressPercentage = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
-
-                                                    return (
-                                                        <div
-                                                            key={shift.id}
-                                                            onClick={() => onEditShift(shift)}
-                                                            className={`rounded-md sm:rounded-lg border shadow-sm cursor-pointer transition-all active:scale-95 sm:hover:shadow-md sm:hover:-translate-y-0.5 relative overflow-hidden group/card bg-white`}
-                                                        >
-                                                            <div className={`absolute left-0 top-0 bottom-0 w-1 ${isAllDone ? 'bg-emerald-500' : 'bg-amber-400'}`}></div>
-                                                            <div className="pl-2 pr-1 py-1.5 sm:pl-2.5 sm:pr-2 sm:py-2">
-                                                                <div className="flex justify-between items-start mb-0.5 sm:mb-1">
-                                                                    <div className="font-bold text-xs sm:text-sm text-[#44403c] truncate leading-tight">
-                                                                        {getEmployeeName(shift.employeeId)}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="mb-1">
-                                                                    <span className={`inline-block text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 rounded border font-medium truncate max-w-full ${shift.color}`}>
-                                                                        {shift.role}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[9px] sm:text-[10px] text-[#78716c] font-medium items-center">
-                                                                    <div className="flex items-center gap-0.5">
-                                                                        <Clock size={10} />
-                                                                        <span>{shift.startTime}-{shift.endTime}</span>
-                                                                    </div>
-                                                                </div>
-                                                                {totalTasks > 0 && (
-                                                                    <div className="mt-1 sm:mt-2 flex items-center gap-1.5">
-                                                                        <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                                                                            <div className={`h-full rounded-full transition-all duration-500 ${isAllDone ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${progressPercentage}%` }} />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            <button
-                                                onClick={() => onAddShift(formattedDate)}
-                                                className="absolute bottom-2 right-2 p-2 bg-[#d97706] text-white rounded-full shadow-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-[#b45309] hover:scale-110 z-10"
-                                                title="新增排班"
-                                            >
-                                                <Plus size={18} />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                // LIST VIEW (Optimized for Mobile)
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
                     {weekDays.map((day, i) => {
                         const dayShifts = getShiftsForDay(day);
                         const isToday = isSameDay(day, new Date());
-                        const formattedDate = format(day, 'yyyy-MM-dd');
-                        
+                        const isPast = isBefore(day, new Date(new Date().setHours(0,0,0,0)));
+
                         return (
-                            <div key={i} className={`bg-white rounded-xl shadow-sm border ${isToday ? 'border-[#064e3b] ring-1 ring-[#064e3b]/20' : 'border-[#e7e5e4]'} overflow-hidden`}>
-                                {/* Day Header */}
-                                <div className={`px-4 py-3 flex justify-between items-center ${isToday ? 'bg-[#ecfdf5]' : 'bg-[#fafaf9]'} border-b border-[#e7e5e4]`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg border ${isToday ? 'bg-[#064e3b] text-white border-[#064e3b]' : 'bg-white text-[#57534e] border-[#d6d3d1]'}`}>
-                                            <span className="text-xs uppercase font-medium">{dayNames[i]}</span>
-                                            <span className="text-lg font-bold leading-none">{format(day, 'd')}</span>
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-[#44403c]">{format(day, 'yyyy年 M月')}</div>
-                                            <div className="text-xs text-[#78716c] flex items-center gap-1">
-                                                <Users size={12} />
-                                                {dayShifts.length > 0 ? `${dayShifts.length} 位夥伴值班` : '本日無排班'}
-                                            </div>
-                                        </div>
+                            <div key={i} className={`flex flex-col min-h-[160px] sm:min-h-[300px] bg-white rounded-2xl border transition-all ${isToday ? 'border-[#064e3b] shadow-lg ring-2 ring-[#064e3b]/5' : 'border-[#e7e5e4]'} ${isPast ? 'opacity-70' : ''}`}>
+                                <div className={`p-2 text-center border-b flex sm:flex-col items-center justify-between sm:justify-center gap-1 ${isToday ? 'bg-[#064e3b] text-white' : 'bg-gray-50'}`}>
+                                    <div className="flex flex-col sm:items-center">
+                                        <div className="text-[9px] font-black uppercase tracking-widest opacity-80">{dayNames[i]}</div>
+                                        <div className="text-base font-black leading-tight">{format(day, 'd')}</div>
                                     </div>
-                                    <button
-                                        onClick={() => onAddShift(formattedDate)}
-                                        className="p-2 text-[#d97706] hover:bg-[#fffbeb] rounded-full transition-colors"
-                                        title="新增本日排班"
-                                    >
-                                        <Plus size={20} />
-                                    </button>
+                                    {isToday && <Star size={12} className="text-[#fbbf24] fill-[#fbbf24] animate-pulse" />}
                                 </div>
-
-                                {/* Shifts List */}
-                                <div className="divide-y divide-[#f5f5f4]">
-                                    {dayShifts.length === 0 ? (
-                                        <div className="py-6 text-center text-gray-400 text-sm italic">
-                                            本日休園或尚未排班
-                                        </div>
-                                    ) : (
-                                        dayShifts.map(shift => {
-                                            const completedTasks = shift.tasks.filter(t => t.isCompleted).length;
-                                            const totalTasks = shift.tasks.length;
-                                            
-                                            return (
-                                                <div 
-                                                    key={shift.id}
-                                                    onClick={() => onEditShift(shift)}
-                                                    className="p-3 sm:p-4 hover:bg-[#fafaf9] cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 active:bg-gray-50"
-                                                >
-                                                    {/* Employee Info */}
-                                                    <div className="flex items-center gap-3 w-full sm:w-auto sm:min-w-[150px]">
-                                                        <img 
-                                                            src={getEmployeeAvatar(shift.employeeId)} 
-                                                            alt="" 
-                                                            className="w-10 h-10 rounded-full border border-gray-100" 
-                                                        />
-                                                        <div>
-                                                            <div className="font-bold text-[#44403c] text-base">{getEmployeeName(shift.employeeId)}</div>
-                                                            <div className={`text-xs px-1.5 py-0.5 rounded border inline-block mt-0.5 ${shift.color}`}>
-                                                                {shift.role}
-                                                            </div>
-                                                        </div>
+                                <div className="p-2 space-y-2 flex-1 overflow-y-auto overflow-x-visible">
+                                    {dayShifts.map(shift => {
+                                        const emp = getEmployee(shift.employeeId);
+                                        const doneCount = shift.tasks.filter(t => t.isCompleted).length;
+                                        const totalCount = shift.tasks.length;
+                                        return (
+                                            <div key={shift.id} onClick={() => onEditShift(shift)} className="relative bg-white border border-gray-100 rounded-xl p-2 shadow-sm hover:border-[#d97706] cursor-pointer transition-all active:scale-95 group hover:z-20 hover:shadow-md">
+                                                <div className="flex items-center gap-1.5 mb-1">
+                                                    <img src={emp?.avatar} className="w-5 h-5 rounded-full object-cover" alt="" />
+                                                    <span className="font-black text-[10px] text-gray-700 truncate">{emp?.name}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className={`text-[8px] font-black px-1 py-0.5 rounded ${shift.color}`}>{shift.role}</div>
+                                                    <div className="flex items-center gap-0.5 text-[8px] font-bold text-emerald-600">
+                                                        <CheckSquare size={10}/> {doneCount}/{totalCount}
                                                     </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 text-[8px] text-gray-400 font-bold"><Clock size={8}/> {shift.startTime}-{shift.endTime}</div>
 
-                                                    {/* Time & Stats - Stacked on Mobile */}
-                                                    <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-4 items-center bg-gray-50 sm:bg-transparent p-2 sm:p-0 rounded-lg">
-                                                        <div className="flex items-center gap-1.5 text-sm text-[#57534e] col-span-1">
-                                                            <Clock size={16} className="text-[#d97706]" />
-                                                            <span className="font-medium whitespace-nowrap">{shift.startTime}-{shift.endTime}</span>
+                                                {/* Hover Tooltip Task Preview */}
+                                                <div className="absolute left-0 top-[95%] pt-2 w-[110%] z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none hidden group-hover:block">
+                                                    <div className="bg-white/95 backdrop-blur-md border-2 border-amber-100 rounded-xl shadow-xl p-3 relative">
+                                                        <div className="absolute -top-1.5 left-4 w-3 h-3 bg-white border-t border-l border-amber-100 transform rotate-45"></div>
+                                                        <div className="text-[9px] font-black text-[#d97706] mb-1.5 flex items-center gap-1 uppercase tracking-widest">
+                                                            <ListChecks size={10} /> 任務預覽
                                                         </div>
-                                                        
-                                                        <div className="flex justify-end sm:justify-start col-span-1">
-                                                            {(shift.breakStartTime && shift.breakEndTime) ? (
-                                                                 <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
-                                                                    <Coffee size={14} />
-                                                                    <span>休 {shift.breakStartTime}-{shift.breakEndTime}</span>
+                                                        <div className="space-y-1.5">
+                                                            {shift.tasks.length === 0 ? (
+                                                                <p className="text-[10px] text-gray-400 italic">尚未建立任務</p>
+                                                            ) : (
+                                                                shift.tasks.slice(0, 3).map((task, idx) => (
+                                                                    <div key={idx} className="flex items-start gap-1.5 text-[10px] text-gray-600">
+                                                                        <div className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${task.isCompleted ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+                                                                        <span className={`truncate leading-tight ${task.isCompleted ? 'line-through text-gray-300' : ''}`}>
+                                                                            {task.description}
+                                                                        </span>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                            {shift.tasks.length > 3 && (
+                                                                <div className="text-[9px] text-gray-400 pl-3 font-bold">
+                                                                    + 還有 {shift.tasks.length - 3} 項...
                                                                 </div>
-                                                            ) : (shift.breakDuration && shift.breakDuration > 0 ? (
-                                                                <div className="flex items-center gap-1.5 text-xs text-[#78716c]">
-                                                                    <Coffee size={14} />
-                                                                    <span>休 {shift.breakDuration}分</span>
-                                                                </div>
-                                                            ) : <div />)}
-                                                        </div>
-
-                                                        <div className="col-span-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="flex-1 h-2 bg-gray-200 sm:bg-gray-100 rounded-full overflow-hidden">
-                                                                    <div 
-                                                                        className={`h-full rounded-full ${totalTasks > 0 && completedTasks === totalTasks ? 'bg-emerald-500' : 'bg-amber-400'}`} 
-                                                                        style={{ width: `${totalTasks === 0 ? 0 : (completedTasks / totalTasks) * 100}%` }} 
-                                                                    />
-                                                                </div>
-                                                                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                                                                    {completedTasks}/{totalTasks} 
-                                                                </span>
-                                                            </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
-                                            );
-                                        })
+                                            </div>
+                                        );
+                                    })}
+                                    {!isPast && (
+                                        <button onClick={() => onAddShift(format(day, 'yyyy-MM-dd'))} className="w-full py-3 border-2 border-dashed border-gray-100 rounded-xl text-gray-300 hover:border-[#064e3b] hover:text-[#064e3b] transition-all flex items-center justify-center"><Plus size={16} /></button>
                                     )}
                                 </div>
                             </div>
                         );
                     })}
+                </div>
+            ) : (
+                /* Timeline View Simplified */
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden p-4">
+                    <h3 className="font-black text-sm mb-4">今日人力分佈</h3>
+                    <div className="space-y-3">
+                        {getShiftsForDay(new Date()).length === 0 ? <p className="text-center text-xs text-gray-400 italic">今日無排班</p> : 
+                            getShiftsForDay(new Date()).map(shift => {
+                                const emp = getEmployee(shift.employeeId);
+                                return (
+                                    <div key={shift.id} className="flex items-center gap-3">
+                                        <img src={emp?.avatar} className="w-6 h-6 rounded-full" alt="" />
+                                        <span className="text-[10px] font-bold w-12">{emp?.name}</span>
+                                        <div className="flex-1 h-6 bg-gray-50 rounded-lg relative overflow-hidden">
+                                            <div onClick={() => onEditShift(shift)} className={`absolute h-full border-l-2 flex items-center px-2 text-[8px] font-black cursor-pointer ${shift.color}`} style={{left:'10%', width:'70%'}}>
+                                                {shift.startTime}-{shift.endTime} ({shift.role})
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        }
+                    </div>
                 </div>
             )}
         </div>

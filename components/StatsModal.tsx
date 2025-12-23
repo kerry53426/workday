@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { Shift, Employee } from '../types';
-import { X, Calculator, Clock, TrendingUp, CalendarDays, Coins, Coffee } from 'lucide-react';
+import { X, Calculator, Clock, User, Award, Info, ChevronDown, ChevronUp, Calendar, Zap } from 'lucide-react';
 import { format, isSameMonth, parseISO } from 'date-fns';
 
 interface StatsModalProps {
@@ -12,248 +13,184 @@ interface StatsModalProps {
 }
 
 export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, currentDate, shifts, employees }) => {
-    
-    // Calculate statistics based on current month
+    const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null);
+
     const stats = useMemo(() => {
         const currentMonthShifts = shifts.filter(s => isSameMonth(parseISO(s.date), currentDate));
-        
         const calculateDuration = (start: string, end: string) => {
             const [startH, startM] = start.split(':').map(Number);
             const [endH, endM] = end.split(':').map(Number);
             let diffMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-            if (diffMinutes < 0) diffMinutes += 24 * 60; // Handle overnight
+            if (diffMinutes < 0) diffMinutes += 24 * 60;
             return diffMinutes / 60;
         };
 
         const employeeStats = employees.map(emp => {
-            const empShifts = currentMonthShifts.filter(s => s.employeeId === emp.id);
-            const BASE_WAGE = emp.hourlyWage || 185; // Default to 185 if not set
-            
+            const empShifts = [...currentMonthShifts].filter(s => s.employeeId === emp.id).sort((a,b) => a.date.localeCompare(b.date));
+            const BASE_WAGE = emp.hourlyWage || 185;
             let totalNetHours = 0;
-            let totalBreakHours = 0;
             let estimatedSalary = 0;
-            let totalTasks = 0;
-            let completedTasks = 0;
-            
-            // New counters for hours breakdown
             let totalNormalHours = 0;
-            let totalOt1Hours = 0; // 1.34x
-            let totalOt2Hours = 0; // 1.67x
+            let totalOt1Hours = 0;
+            let totalOt2Hours = 0;
             
-            empShifts.forEach(s => {
-                const grossDuration = calculateDuration(s.startTime, s.endTime);
+            const dailyDetails = empShifts.map(s => {
+                const gross = calculateDuration(s.startTime, s.endTime);
+                let breakH = 0;
+                if (s.breakStartTime && s.breakEndTime) breakH = calculateDuration(s.breakStartTime, s.breakEndTime);
+                else if (s.breakDuration) breakH = s.breakDuration / 60;
                 
-                // Calculate Break Duration
-                let breakInHours = 0;
-                if (s.breakStartTime && s.breakEndTime) {
-                    breakInHours = calculateDuration(s.breakStartTime, s.breakEndTime);
-                } else if (s.breakDuration) {
-                    // Fallback to old format
-                    breakInHours = s.breakDuration / 60;
-                }
-
-                let netDuration = grossDuration - breakInHours;
-                if (netDuration < 0) netDuration = 0;
-
-                totalNetHours += netDuration;
-                totalBreakHours += breakInHours;
-
-                // Calculate breakdown for this shift
-                let remaining = netDuration;
+                const net = Math.max(0, gross - breakH);
                 
-                // Tier 1: Normal (First 8 hours)
+                let remaining = net;
                 const normal = Math.min(remaining, 8);
                 remaining -= normal;
-                
-                // Tier 2: OT1 (Next 2 hours, 1.34x)
                 const ot1 = Math.min(remaining, 2);
                 remaining -= ot1;
-                
-                // Tier 3: OT2 (Remaining hours, 1.67x)
                 const ot2 = Math.max(0, remaining);
 
-                // Accumulate totals
+                const dayPay = Math.round((normal * BASE_WAGE) + (ot1 * BASE_WAGE * 1.34) + (ot2 * BASE_WAGE * 1.67));
+                
+                totalNetHours += net;
+                estimatedSalary += dayPay;
                 totalNormalHours += normal;
                 totalOt1Hours += ot1;
                 totalOt2Hours += ot2;
 
-                // Calculate Pay based on specific tiers using INDIVIDUAL WAGE
-                estimatedSalary += Math.round(
-                    (normal * BASE_WAGE) + 
-                    (ot1 * BASE_WAGE * 1.34) + 
-                    (ot2 * BASE_WAGE * 1.67)
-                );
-
-                totalTasks += s.tasks.length;
-                completedTasks += s.tasks.filter(t => t.isCompleted).length;
+                return { 
+                    date: s.date, 
+                    net, 
+                    pay: dayPay, 
+                    startTime: s.startTime, 
+                    endTime: s.endTime,
+                    normal,
+                    ot1,
+                    ot2
+                };
             });
 
-            return {
-                ...emp,
-                shiftCount: empShifts.length,
-                totalNetHours: totalNetHours,
-                totalBreakHours: totalBreakHours,
-                totalNormalHours: totalNormalHours,
-                totalOt1Hours: totalOt1Hours,
-                totalOt2Hours: totalOt2Hours,
-                estimatedSalary: estimatedSalary,
-                taskCompletionRate: totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100)
+            return { 
+                ...emp, 
+                shiftCount: empShifts.length, 
+                totalNetHours, 
+                estimatedSalary, 
+                totalNormalHours,
+                totalOt1Hours,
+                totalOt2Hours,
+                dailyDetails 
             };
-        });
+        }).filter(e => e.shiftCount > 0);
 
-        const grandTotalNetHours = employeeStats.reduce((acc, curr) => acc + curr.totalNetHours, 0);
-        const grandTotalSalary = employeeStats.reduce((acc, curr) => acc + curr.estimatedSalary, 0);
-        const totalShiftsCount = currentMonthShifts.length;
-        // Average wage across valid hours
-        const averageWage = grandTotalNetHours > 0 ? Math.round(grandTotalSalary / grandTotalNetHours) : 0;
-
-        return { employeeStats, grandTotalNetHours, grandTotalSalary, totalShiftsCount, averageWage };
+        return { 
+            employeeStats, 
+            totalSalary: employeeStats.reduce((a,c)=>a+c.estimatedSalary, 0), 
+            totalHours: employeeStats.reduce((a,c)=>a+c.totalNetHours, 0) 
+        };
     }, [shifts, employees, currentDate]);
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#064e3b] bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#fcfaf8] rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in duration-200 border-4 border-[#e7e5e4]">
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-[#e7e5e4] flex justify-between items-center bg-[#f5f5f4]">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#d97706] text-white rounded-lg shadow-sm">
-                            <Calculator size={24} />
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold text-[#44403c]">營運工時統計</h3>
-                            <p className="text-xs text-[#78716c] font-medium">{format(currentDate, 'yyyy年 M月')} 報表</p>
-                        </div>
+        <div className="fixed inset-0 z-50 bg-[#064e3b]/90 backdrop-blur-md flex flex-col sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-[#fcfaf8] w-full h-[100dvh] sm:h-auto sm:max-h-[95vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border-t-8 border-[#d97706] safe-area-top">
+                <div className="px-5 py-4 border-b flex justify-between items-center bg-white flex-shrink-0">
+                    <div>
+                        <h3 className="text-xl font-black text-[#44403c] flex items-center gap-2"><Award className="text-[#d97706]" size={20} /> {format(currentDate, 'M月')} 營運績效</h3>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">含加班費詳細計算</div>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-200 rounded-full">
-                        <X size={24} />
-                    </button>
+                    <button onClick={onClose} className="p-2 bg-gray-100 text-gray-400 rounded-full hover:bg-gray-200"><X size={20} /></button>
                 </div>
 
-                <div className="p-4 sm:p-6 max-h-[85vh] overflow-y-auto">
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                        <div className="bg-white p-4 rounded-xl border border-[#e7e5e4] shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700">
-                                <Clock size={24} />
-                            </div>
-                            <div>
-                                <div className="text-xs text-[#78716c]">本月淨工時 (不含休)</div>
-                                <div className="text-xl font-bold text-[#064e3b]">{stats.grandTotalNetHours.toFixed(1)} <span className="text-xs font-normal text-gray-500">hr</span></div>
-                            </div>
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-20">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 text-center">
+                            <div className="text-emerald-600 font-black text-[10px] uppercase mb-1">預估薪資支出</div>
+                            <div className="text-xl font-black text-emerald-800">${stats.totalSalary.toLocaleString()}</div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border border-[#e7e5e4] shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">
-                                <CalendarDays size={24} />
-                            </div>
-                            <div>
-                                <div className="text-xs text-[#78716c]">總排班數</div>
-                                <div className="text-xl font-bold text-[#d97706]">{stats.totalShiftsCount} <span className="text-xs font-normal text-gray-500">班</span></div>
-                            </div>
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-amber-100 text-center">
+                            <div className="text-amber-600 font-black text-[10px] uppercase mb-1">總工時</div>
+                            <div className="text-xl font-black text-amber-800">{stats.totalHours.toFixed(1)} <span className="text-xs">H</span></div>
                         </div>
-                         <div className="bg-white p-4 rounded-xl border border-[#e7e5e4] shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-700">
-                                <Coins size={24} />
-                            </div>
-                            <div>
-                                <div className="text-xs text-[#78716c]">薪資總支出 (預估)</div>
-                                <div className="text-xl font-bold text-rose-600">${stats.grandTotalSalary.toLocaleString()}</div>
-                            </div>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl border border-[#e7e5e4] shadow-sm flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-700">
-                                <TrendingUp size={24} />
-                            </div>
-                            <div>
-                                <div className="text-xs text-[#78716c]">平均時薪成本</div>
-                                <div className="text-xl font-bold text-[#0284c7]">
-                                    ${stats.averageWage} <span className="text-xs font-normal text-gray-500">/hr</span>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-2"><User size={16} /> 夥伴工時明細</h4>
+                        {stats.employeeStats.map(emp => (
+                            <div key={emp.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                                <div onClick={() => setExpandedEmpId(expandedEmpId === emp.id ? null : emp.id)} className="p-4 flex items-center gap-3 cursor-pointer hover:bg-gray-50">
+                                    <img src={emp.avatar} className="w-10 h-10 rounded-full border border-gray-100 object-cover" />
+                                    <div className="flex-1">
+                                        <div className="font-black text-[#44403c]">{emp.name}</div>
+                                        <div className="text-[10px] text-emerald-600 font-bold">預估：${emp.estimatedSalary.toLocaleString()}</div>
+                                    </div>
+                                    <div className="text-right flex items-center gap-3">
+                                        <div>
+                                            <div className="text-xs font-black text-gray-700">{emp.totalNetHours.toFixed(1)}h</div>
+                                            <div className="text-[9px] text-gray-400 uppercase font-black">總工時</div>
+                                        </div>
+                                        {expandedEmpId === emp.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
+                                {expandedEmpId === emp.id && (
+                                    <div className="px-4 pb-4 border-t border-gray-50 bg-gray-50/30 animate-in slide-in-from-top-1">
+                                        {/* Monthly Breakdown Summary */}
+                                        <div className="flex justify-between py-3 border-b border-dashed border-gray-200 mb-3">
+                                             <div className="text-center">
+                                                 <div className="text-[9px] text-gray-400 font-bold mb-1">一般工時</div>
+                                                 <div className="text-xs font-black text-gray-700">{emp.totalNormalHours.toFixed(1)}h</div>
+                                             </div>
+                                             <div className="text-center">
+                                                 <div className="text-[9px] text-amber-600 font-bold mb-1">加班 1.34</div>
+                                                 <div className="text-xs font-black text-amber-700">{emp.totalOt1Hours.toFixed(1)}h</div>
+                                             </div>
+                                             <div className="text-center">
+                                                 <div className="text-[9px] text-red-500 font-bold mb-1">加班 1.67</div>
+                                                 <div className="text-xs font-black text-red-600">{emp.totalOt2Hours.toFixed(1)}h</div>
+                                             </div>
+                                        </div>
 
-                    <div className="text-xs text-gray-500 mb-2 text-right bg-gray-50 p-2 rounded border border-gray-100">
-                        * 計算規則：淨工時 = 總時數 - 休息時間。 薪資計算：依每人基本時薪 (0-8小時) / 加班 1.34倍 (9-10小時) / 加班 1.67倍 ({'>'}10小時)
-                    </div>
-
-                    {/* Employee Table */}
-                    <div className="bg-white rounded-xl border border-[#e7e5e4] shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse min-w-[800px]">
-                                <thead>
-                                    <tr className="bg-[#fafaf9] border-b border-[#e7e5e4] text-[#57534e] text-sm uppercase tracking-wider">
-                                        <th className="px-4 py-4 font-bold sticky left-0 bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">夥伴姓名 / 時薪</th>
-                                        <th className="px-4 py-4 font-bold text-center">排班數</th>
-                                        <th className="px-4 py-4 font-bold text-center bg-gray-50 text-gray-700 border-x border-gray-200">淨工時 (hr)</th>
-                                        <th className="px-4 py-4 font-bold text-center bg-emerald-50 text-emerald-800">正常 (1.0)</th>
-                                        <th className="px-4 py-4 font-bold text-center bg-amber-50 text-amber-800">加班 (1.34)</th>
-                                        <th className="px-4 py-4 font-bold text-center bg-rose-50 text-rose-800">加班 (1.67)</th>
-                                        <th className="px-4 py-4 font-bold text-center">休息 (hr)</th>
-                                        <th className="px-4 py-4 font-bold text-center text-rose-700 border-l border-gray-200">預估薪資</th>
-                                        <th className="px-4 py-4 font-bold text-center">達成率</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#e7e5e4]">
-                                    {stats.employeeStats.map((emp) => (
-                                        <tr key={emp.id} className="hover:bg-[#fafaf9] transition-colors">
-                                            <td className="px-4 py-4 sticky left-0 bg-white group-hover:bg-[#fafaf9] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                                                <div className="flex items-center gap-2">
-                                                    <img src={emp.avatar} alt={emp.name} className="w-8 h-8 rounded-full shadow-sm" />
-                                                    <div>
-                                                        <div className="font-bold text-[#44403c] whitespace-nowrap">{emp.name}</div>
-                                                        <div className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded inline-block">
-                                                            ${emp.hourlyWage}/hr
+                                        <div className="text-[9px] font-black text-gray-400 mb-2 uppercase tracking-tighter">每日班次明細</div>
+                                        <div className="space-y-2">
+                                            {emp.dailyDetails.map((day, idx) => (
+                                                <div key={idx} className="bg-white rounded-xl border border-gray-100 p-2.5">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <div className="flex items-center gap-2 font-bold text-gray-700">
+                                                            <Calendar size={14} className="text-[#d97706]"/> 
+                                                            {format(parseISO(day.date), 'MM/dd')}
+                                                            <span className="text-[10px] text-gray-400 font-medium">({day.startTime}-{day.endTime})</span>
                                                         </div>
+                                                        <div className="font-black text-[#064e3b] text-sm">${day.pay.toLocaleString()}</div>
+                                                    </div>
+                                                    
+                                                    {/* Work Hour Breakdown Bar */}
+                                                    <div className="flex gap-1 text-[9px] font-bold">
+                                                        <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded flex-1 text-center">
+                                                            一般 {day.normal.toFixed(1)}h
+                                                        </div>
+                                                        {day.ot1 > 0 && (
+                                                            <div className="bg-amber-50 text-amber-700 px-2 py-1 rounded flex-1 text-center flex items-center justify-center gap-1 border border-amber-100">
+                                                                <Zap size={8} fill="currentColor"/> 1.34x: {day.ot1.toFixed(1)}h
+                                                            </div>
+                                                        )}
+                                                        {day.ot2 > 0 && (
+                                                            <div className="bg-red-50 text-red-700 px-2 py-1 rounded flex-1 text-center flex items-center justify-center gap-1 border border-red-100">
+                                                                <Zap size={8} fill="currentColor"/> 1.67x: {day.ot2.toFixed(1)}h
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            </td>
-                                            <td className="px-4 py-4 text-center">
-                                                <span className="inline-block px-2.5 py-0.5 bg-stone-100 text-stone-700 rounded-full text-xs font-medium">
-                                                    {emp.shiftCount}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4 text-center font-bold text-[#44403c] bg-gray-50/50 border-x border-[#e7e5e4]">
-                                                {emp.totalNetHours.toFixed(1)}
-                                            </td>
-                                            <td className="px-4 py-4 text-center text-emerald-700 bg-emerald-50/30">
-                                                {emp.totalNormalHours > 0 ? emp.totalNormalHours.toFixed(1) : '-'}
-                                            </td>
-                                            <td className="px-4 py-4 text-center text-amber-700 bg-amber-50/30 font-medium">
-                                                {emp.totalOt1Hours > 0 ? emp.totalOt1Hours.toFixed(1) : '-'}
-                                            </td>
-                                            <td className="px-4 py-4 text-center text-rose-700 bg-rose-50/30 font-bold">
-                                                {emp.totalOt2Hours > 0 ? emp.totalOt2Hours.toFixed(1) : '-'}
-                                            </td>
-                                            <td className="px-4 py-4 text-center">
-                                                <div className="flex items-center justify-center gap-1 text-gray-400 text-xs">
-                                                    <span>{emp.totalBreakHours > 0 ? emp.totalBreakHours.toFixed(1) : '-'}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 text-center border-l border-[#e7e5e4]">
-                                                <span className="font-bold text-rose-600">
-                                                    ${emp.estimatedSalary.toLocaleString()}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <div className="w-16 bg-gray-200 rounded-full h-2 overflow-hidden">
-                                                        <div 
-                                                            className={`h-2 rounded-full ${
-                                                                emp.taskCompletionRate === 100 ? 'bg-emerald-500' : 
-                                                                emp.taskCompletionRate > 70 ? 'bg-amber-400' : 'bg-red-400'
-                                                            }`} 
-                                                            style={{ width: `${emp.taskCompletionRate}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className="text-[10px] font-medium text-gray-500 w-6 text-right">{emp.taskCompletionRate}%</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3">
+                        <Info size={18} className="text-blue-600 flex-shrink-0" />
+                        <div className="text-[11px] text-blue-700 leading-relaxed font-bold">
+                            工時說明：每日正常工時上限 8 小時。第 9-10 小時乘 1.34 倍；第 11 小時起乘 1.67 倍。
                         </div>
                     </div>
                 </div>

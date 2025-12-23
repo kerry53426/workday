@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { Layout } from './components/Layout';
 import { CalendarView } from './components/CalendarView';
 import { ShiftModal } from './components/ShiftModal';
@@ -7,753 +8,337 @@ import { LoginScreen } from './components/LoginScreen';
 import { StatsModal } from './components/StatsModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { EmployeeManagerModal } from './components/EmployeeManagerModal';
-import { SystemSettingsModal } from './components/SystemSettingsModal';
-import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID, SystemSettings } from './types';
+import { Shift, INITIAL_EMPLOYEES, Employee, TaskCategory, DEFAULT_TASK_CATEGORIES, Notification, Feedback, generateUUID } from './types';
 import { addWeeks, subWeeks, format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Users, Tent, LogOut, Settings, Calculator, Download, Upload, Bell, Check, Trash2, MessageSquareQuote, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calculator, MessageSquareQuote, LogOut, Tent, Sparkles, Users, CloudCheck, CloudOff, RefreshCw, Bell, X, Key } from 'lucide-react';
 import { loadFromPantry, saveToPantry } from './services/pantryService';
 
-// ==========================================
-// 系統設定 (請在此填入 Pantry ID)
-// ==========================================
-// 如果您填入下方的 ID，所有使用者 (執行長、夥伴) 開啟網頁後
-// 都會自動連線，完全不需要手動設定！
-// 請將 ID 填入下方引號中，例如: const APP_PANTRY_ID = "9581632d-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
-const APP_PANTRY_ID = "085e1276-c22a-4c58-9a2b-3b40d8fce6d9" as string; 
-// ==========================================
-
-// Mock data initialization
-const loadInitialShifts = (): Shift[] => {
-    const saved = localStorage.getItem('sm_shifts');
-    if (saved) return JSON.parse(saved);
-    return [];
-};
-
-const loadNotifications = (): Notification[] => {
-    const saved = localStorage.getItem('sm_notifications');
-    if (saved) return JSON.parse(saved);
-    return [];
-};
-
-const loadFeedbacks = (): Feedback[] => {
-    const saved = localStorage.getItem('sm_feedbacks');
-    if (saved) return JSON.parse(saved);
-    return [];
-};
-
-const loadEmployees = (): Employee[] => {
-    const saved = localStorage.getItem('sm_employees');
-    if (saved) {
-        // Migration: Ensure hourlyWage exists if loading old data
-        const emps = JSON.parse(saved);
-        return emps.map((e: any) => ({
-            ...e,
-            hourlyWage: e.hourlyWage || 185
-        }));
-    }
-    return INITIAL_EMPLOYEES;
-};
-
-const loadEmployeePasswords = (): {[key: string]: string} => {
-    const saved = localStorage.getItem('sm_employee_pwds');
-    if (saved) return JSON.parse(saved);
-    return {};
-};
-
-const getStoredPassword = (): string => {
-    return localStorage.getItem('sm_ceo_pwd') || '1234';
-};
-
-const loadTaskCategories = (): TaskCategory[] => {
-    const saved = localStorage.getItem('sm_task_categories');
-    if (saved) return JSON.parse(saved);
-    return DEFAULT_TASK_CATEGORIES;
-};
-
-const loadSystemSettings = (): SystemSettings => {
-    // 優先使用程式碼中寫死的 ID (全域設定)
-    if (APP_PANTRY_ID && APP_PANTRY_ID.trim() !== "") {
-        return { pantryId: APP_PANTRY_ID, isCloudSyncEnabled: true };
-    }
-
-    // 其次使用本地暫存的設定 (個別設定)
-    const saved = localStorage.getItem('sm_system_settings');
-    if (saved) return JSON.parse(saved);
-    
-    // 預設關閉
-    return { isCloudSyncEnabled: false };
-};
+const APP_PANTRY_ID = "085e1276-c22a-4c58-9a2b-3b40d8fce6d9"; 
 
 const App: React.FC = () => {
-    // State
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userRole, setUserRole] = useState<'manager' | 'employee' | null>(null);
-    const [ceoPassword, setCeoPassword] = useState(getStoredPassword());
-    const [employeePasswords, setEmployeePasswords] = useState<{[key: string]: string}>(loadEmployeePasswords());
-    
-    const [employees, setEmployees] = useState<Employee[]>(loadEmployees());
     const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [shifts, setShifts] = useState<Shift[]>(loadInitialShifts());
-    const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(loadTaskCategories()); 
-    const [notifications, setNotifications] = useState<Notification[]>(loadNotifications()); 
-    const [feedbacks, setFeedbacks] = useState<Feedback[]>(loadFeedbacks());
-    const [systemSettings, setSystemSettings] = useState<SystemSettings>(loadSystemSettings());
+    const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+    
+    const [employees, setEmployees] = useState<Employee[]>(() => {
+        const saved = localStorage.getItem('sm_employees');
+        return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
+    });
+    
+    const [shifts, setShifts] = useState<Shift[]>(() => {
+        const saved = localStorage.getItem('sm_shifts');
+        return saved ? JSON.parse(saved) : [];
+    });
+    
+    const [feedbacks, setFeedbacks] = useState<Feedback[]>(() => {
+        const saved = localStorage.getItem('sm_feedbacks');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [notifications, setNotifications] = useState<Notification[]>(() => {
+        const saved = localStorage.getItem('sm_notifications');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(() => {
+        const saved = localStorage.getItem('sm_categories');
+        return saved ? JSON.parse(saved) : DEFAULT_TASK_CATEGORIES;
+    });
 
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isModalReadOnly, setIsModalReadOnly] = useState(false); 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
-    const [isNotificationOpen, setIsNotificationOpen] = useState(false); 
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false); 
+    const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
+    const [isCeoChangePwdOpen, setIsCeoChangePwdOpen] = useState(false);
+    const [newCeoPwd, setNewCeoPwd] = useState('');
     const [modalDate, setModalDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [editingShift, setEditingShift] = useState<Shift | undefined>(undefined);
-    
-    // Cloud Status
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [lastSyncedTime, setLastSyncedTime] = useState<Date | null>(null);
 
-    // File input ref for restore
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const notificationRef = useRef<HTMLDivElement>(null);
-
-    // --- Initialization & Cloud Sync ---
-    
-    // 1. Initial Load on Startup
     useEffect(() => {
-        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
-            handleManualSync(false); // Initial load
-        }
-    }, [systemSettings.isCloudSyncEnabled, systemSettings.pantryId]);
-
-    // 2. Auto-Polling (The "Real-time" simulation)
-    // Runs every 30 seconds to fetch changes from other devices
-    useEffect(() => {
-        let interval: any = null;
-        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId && isLoggedIn) {
-            interval = setInterval(() => {
-                console.log("Auto-syncing from cloud...");
-                handleManualSync(true); // Silent sync
-            }, 30000); // 30 seconds
-        }
-        return () => {
-            if (interval) clearInterval(interval);
-        };
-    }, [systemSettings.isCloudSyncEnabled, systemSettings.pantryId, isLoggedIn]);
-
-    // Function to perform cloud sync (Load)
-    // silent = true means don't show the spinning loading indicator (for background polling)
-    const handleManualSync = async (silent = false) => {
-        if (!systemSettings.pantryId) return;
-        
-        if (!silent) setIsSyncing(true);
-        
-        const data = await loadFromPantry(systemSettings.pantryId);
-        if (data) {
-            // Only update if we have data to avoid wiping with empty response
-            if (data.shifts) setShifts(data.shifts);
-            if (data.employees) setEmployees(data.employees);
-            if (data.taskCategories) setTaskCategories(data.taskCategories);
-            if (data.notifications) setNotifications(data.notifications);
-            if (data.feedbacks) setFeedbacks(data.feedbacks);
-            
-            setLastSyncedTime(new Date());
-            // We generally don't sync passwords or local session state
-        }
-        
-        if (!silent) setIsSyncing(false);
-    };
-
-    // Helper to persist data (Local + Cloud)
-    // We save to cloud on every "Write" operation
-    const persistData = async (updatedData: {
-        shifts?: Shift[], 
-        employees?: Employee[], 
-        taskCategories?: TaskCategory[], 
-        notifications?: Notification[],
-        feedbacks?: Feedback[]
-    }) => {
-        // 1. Update State & LocalStorage (Handled by useEffects below)
-        
-        // 2. Save to Cloud if enabled
-        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
-            setIsSyncing(true); // Show syncing on write
-            // Construct full payload based on current state + updates
-            const fullPayload = {
-                shifts: updatedData.shifts || shifts,
-                employees: updatedData.employees || employees,
-                taskCategories: updatedData.taskCategories || taskCategories,
-                notifications: updatedData.notifications || notifications,
-                feedbacks: updatedData.feedbacks || feedbacks,
-                lastUpdated: new Date().toISOString()
-            };
-            await saveToPantry(systemSettings.pantryId, fullPayload);
-            setIsSyncing(false);
-            setLastSyncedTime(new Date());
-        }
-    };
-
-    // Local Persistence (Fallback & Init)
-    useEffect(() => { localStorage.setItem('sm_shifts', JSON.stringify(shifts)); }, [shifts]);
-    useEffect(() => { localStorage.setItem('sm_task_categories', JSON.stringify(taskCategories)); }, [taskCategories]);
-    useEffect(() => { localStorage.setItem('sm_notifications', JSON.stringify(notifications)); }, [notifications]);
-    useEffect(() => { localStorage.setItem('sm_feedbacks', JSON.stringify(feedbacks)); }, [feedbacks]);
-    useEffect(() => { localStorage.setItem('sm_employee_pwds', JSON.stringify(employeePasswords)); }, [employeePasswords]);
-    useEffect(() => { localStorage.setItem('sm_employees', JSON.stringify(employees)); }, [employees]);
-    useEffect(() => { localStorage.setItem('sm_system_settings', JSON.stringify(systemSettings)); }, [systemSettings]);
-
-    // Click outside to close notification dropdown
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-                setIsNotificationOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
+        handleManualSync();
     }, []);
 
-    // Handlers
+    // 震動邏輯：當有新通知且目標是目前使用者時
+    useEffect(() => {
+        const lastNotif = notifications[0];
+        if (lastNotif && !lastNotif.isRead) {
+            const isForMe = (userRole === 'manager' && lastNotif.targetEmployeeId === 'manager') || 
+                           (userRole === 'employee' && lastNotif.targetEmployeeId === currentEmployeeId);
+            if (isForMe && 'vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200]);
+            }
+        }
+    }, [notifications.length]);
+
+    const handleManualSync = async () => {
+        setSyncStatus('syncing');
+        try {
+            const data = await loadFromPantry(APP_PANTRY_ID);
+            if (data) {
+                if (data.shifts) setShifts(data.shifts);
+                if (data.employees) setEmployees(data.employees);
+                if (data.feedbacks) setFeedbacks(data.feedbacks);
+                if (data.notifications) setNotifications(data.notifications);
+                if (data.categories) setTaskCategories(data.categories);
+                setSyncStatus('synced');
+            }
+        } catch (e) {
+            setSyncStatus('error');
+        }
+    };
+
+    const persistData = async (updated: { shifts?: Shift[], employees?: Employee[], feedbacks?: Feedback[], notifications?: Notification[], categories?: TaskCategory[] }) => {
+        setSyncStatus('syncing');
+        const nextShifts = updated.shifts || shifts;
+        const nextEmployees = updated.employees || employees;
+        const nextFeedbacks = updated.feedbacks || feedbacks;
+        const nextNotifications = updated.notifications || notifications;
+        const nextCategories = updated.categories || taskCategories;
+
+        const fullPayload = {
+            shifts: nextShifts,
+            employees: nextEmployees,
+            feedbacks: nextFeedbacks,
+            notifications: nextNotifications,
+            categories: nextCategories,
+            lastUpdated: new Date().toISOString()
+        };
+
+        localStorage.setItem('sm_shifts', JSON.stringify(nextShifts));
+        localStorage.setItem('sm_employees', JSON.stringify(nextEmployees));
+        localStorage.setItem('sm_feedbacks', JSON.stringify(nextFeedbacks));
+        localStorage.setItem('sm_notifications', JSON.stringify(nextNotifications));
+        localStorage.setItem('sm_categories', JSON.stringify(nextCategories));
+        
+        try {
+            await saveToPantry(APP_PANTRY_ID, fullPayload);
+            setSyncStatus('synced');
+        } catch (e) {
+            setSyncStatus('error');
+        }
+    };
+
+    const handleSaveShift = (newShiftData: Shift | Shift[]) => {
+        const updatedShiftsArray = Array.isArray(newShiftData) ? newShiftData : [newShiftData];
+        let nextShifts = [...shifts];
+        const newNotifs: Notification[] = [...notifications];
+
+        updatedShiftsArray.forEach(newShift => {
+            const idx = nextShifts.findIndex(s => s.id === newShift.id);
+            if (idx >= 0) {
+                newShift.tasks.forEach(task => {
+                    const oldTask = nextShifts[idx].tasks.find(t => t.id === task.id);
+                    if (task.isCompleted && !oldTask?.isCompleted && task.completedBy) {
+                        const completer = employees.find(e => e.id === task.completedBy);
+                        // 1. 通知夥伴本人 (如果有人幫忙)
+                        if (newShift.employeeId !== task.completedBy) {
+                            newNotifs.unshift({
+                                id: generateUUID(), type: 'help_received', title: '夥伴支援',
+                                message: `${completer?.name} 幫你完成了: ${task.description}`,
+                                timestamp: Date.now(), isRead: false, targetEmployeeId: newShift.employeeId, senderId: task.completedBy
+                            });
+                        }
+                        // 2. 通知執行長
+                        newNotifs.unshift({
+                            id: generateUUID(), type: 'task_completion', title: '任務完成回報',
+                            message: `${completer?.name} 已完成「${newShift.role}」班次的任務：${task.description}`,
+                            timestamp: Date.now(), isRead: false, targetEmployeeId: 'manager', senderId: task.completedBy
+                        });
+                    }
+                });
+                nextShifts[idx] = newShift;
+            } else {
+                nextShifts.push(newShift);
+            }
+        });
+
+        setShifts(nextShifts);
+        setNotifications(newNotifs);
+        persistData({ shifts: nextShifts, notifications: newNotifs });
+    };
+
     const handleLogin = (role: 'manager' | 'employee', employeeId?: string) => {
         setIsLoggedIn(true);
         setUserRole(role);
-        if (role === 'employee' && employeeId) {
-            setCurrentEmployeeId(employeeId);
-        } else {
-            setCurrentEmployeeId(null);
-        }
-        // Attempt sync on login
-        if(systemSettings.isCloudSyncEnabled) handleManualSync(false);
+        setCurrentEmployeeId(employeeId || null);
     };
 
-    const handleLogout = () => {
-        setIsLoggedIn(false);
-        setUserRole(null);
-        setCurrentEmployeeId(null);
-        setIsStatsOpen(false);
-        setIsNotificationOpen(false);
-        setIsFeedbackModalOpen(false);
-        setIsEmployeeManagerOpen(false);
-        setIsSettingsOpen(false);
-        setIsModalOpen(false);
-    };
+    const handleLogout = () => { setIsLoggedIn(false); setUserRole(null); setCurrentEmployeeId(null); };
 
-    const handleChangePassword = () => {
-        const newPassword = window.prompt("請設定新的執行長密碼：");
-        if (newPassword && newPassword.trim() !== "") {
-            setCeoPassword(newPassword);
-            localStorage.setItem('sm_ceo_pwd', newPassword);
-            alert("密碼更新成功！");
-        }
-    };
+    const currentEmployee = useMemo(() => {
+        return employees.find(e => e.id === currentEmployeeId) || null;
+    }, [employees, currentEmployeeId]);
 
-    const handleEmployeeChangePassword = (newPassword: string) => {
-        if (!currentEmployeeId) return;
-        setEmployeePasswords(prev => {
-            const next = { ...prev, [currentEmployeeId]: newPassword };
-            return next; 
-        });
-    };
-
-    const handleSendFeedback = (content: string) => {
-        if (!currentEmployeeId) return;
-        const newFeedback: Feedback = {
-            id: generateUUID(),
-            employeeId: currentEmployeeId,
-            content,
-            date: new Date().toISOString(),
-            isRead: false
-        };
-        const nextFeedbacks = [newFeedback, ...feedbacks];
-        setFeedbacks(nextFeedbacks);
-        persistData({ feedbacks: nextFeedbacks });
-    };
-
-    const handleFeedbackMarkAsRead = (id: string) => {
-        const next = feedbacks.map(f => f.id === id ? { ...f, isRead: true } : f);
-        setFeedbacks(next);
-        persistData({ feedbacks: next });
-    };
-
-    const handleUpdateFeedback = (id: string, updates: Partial<Feedback>) => {
-        const next = feedbacks.map(f => f.id === id ? { ...f, ...updates } : f);
-        setFeedbacks(next);
-        persistData({ feedbacks: next });
-    };
-
-    const handleDeleteFeedback = (id: string) => {
-        if(window.confirm('確定要刪除此留言嗎？')) {
-            const next = feedbacks.filter(f => f.id !== id);
-            setFeedbacks(next);
-            persistData({ feedbacks: next });
-        }
-    };
-
-    const handleDeleteAllReadFeedbacks = () => {
-        if (window.confirm("確定要刪除所有已讀的留言嗎？此動作無法復原。")) {
-            const next = feedbacks.filter(f => !f.isRead);
-            setFeedbacks(next);
-            persistData({ feedbacks: next });
-        }
-    };
-
-    const handleResetPassword = () => {
-        if (window.confirm("確定要將執行長密碼重置為預設值 '1234' 嗎？")) {
-            const defaultPwd = '1234';
-            setCeoPassword(defaultPwd);
-            localStorage.setItem('sm_ceo_pwd', defaultPwd);
-            alert("密碼已重置為 1234，請使用新密碼登入。");
-        }
-    };
-
-    const handleUpdateTaskCategories = (newCategories: TaskCategory[]) => {
-        setTaskCategories(newCategories);
-        persistData({ taskCategories: newCategories });
-    };
-
-    const handleUpdateEmployees = (newEmployees: Employee[]) => {
-        setEmployees(newEmployees);
-        persistData({ employees: newEmployees });
-    };
-
-    const handleSaveSystemSettings = (settings: SystemSettings) => {
-        setSystemSettings(settings);
-    };
-
-    // --- Notification Logic ---
-    const handleMarkAsRead = (id: string) => {
-        const next = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
-        setNotifications(next);
-        persistData({ notifications: next });
-    };
-
-    const handleMarkAllRead = () => {
-        const next = notifications.map(n => ({ ...n, isRead: true }));
-        setNotifications(next);
-        persistData({ notifications: next });
-    };
-
-    const handleClearNotifications = () => {
-        if (window.confirm('確定要清空所有通知嗎？')) {
-            setNotifications([]);
-            persistData({ notifications: [] });
-        }
-    };
-
-    // --- Backup & Restore Logic (Manual) ---
-    const handleExportData = () => {
-        const data = { shifts, taskCategories, notifications, feedbacks, employeePasswords, employees };
-        const dataStr = JSON.stringify(data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `愛上喜翁_排班備份_${format(new Date(), 'yyyyMMdd')}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    };
-
-    const handleImportClick = () => {
-        if (fileInputRef.current) fileInputRef.current.click();
-    };
-
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const content = e.target?.result as string;
-                const parsedData = JSON.parse(content);
-                
-                const newShifts = Array.isArray(parsedData) ? parsedData : parsedData.shifts;
-                let newTaskCategories = taskCategories;
-                let newNotifications = notifications;
-                let newFeedbacks = feedbacks;
-                let newEmployees = employees;
-
-                if (parsedData.taskCategories) newTaskCategories = parsedData.taskCategories;
-                if (parsedData.notifications) newNotifications = parsedData.notifications;
-                if (parsedData.feedbacks) newFeedbacks = parsedData.feedbacks;
-                if (parsedData.employees) newEmployees = parsedData.employees;
-
-                if (Array.isArray(newShifts)) {
-                    if (window.confirm(`確定要還原備份嗎？\n這將會覆蓋目前的資料。`)) {
-                        setShifts(newShifts);
-                        setTaskCategories(newTaskCategories);
-                        setNotifications(newNotifications);
-                        setFeedbacks(newFeedbacks);
-                        setEmployees(newEmployees);
-                        
-                        // Force push imported data to cloud if enabled
-                        if (systemSettings.isCloudSyncEnabled && systemSettings.pantryId) {
-                             await persistData({
-                                 shifts: newShifts,
-                                 taskCategories: newTaskCategories,
-                                 notifications: newNotifications,
-                                 feedbacks: newFeedbacks,
-                                 employees: newEmployees
-                             });
-                        }
-                        
-                        alert("資料還原成功！");
-                    }
-                } else {
-                    alert("檔案格式錯誤。");
-                }
-            } catch (error) {
-                console.error("Import error:", error);
-                alert("讀取檔案失敗。");
-            }
-        };
-        reader.readAsText(file);
-        event.target.value = '';
-    };
-
-    // --- Shift Logic ---
-    const handleAddShift = (date: string) => {
-        if (userRole !== 'manager') return;
-        setModalDate(date);
-        setEditingShift(undefined);
-        setIsModalReadOnly(false);
-        setIsModalOpen(true);
-    };
-
-    const handleEditShift = (shift: Shift) => {
-        if (userRole !== 'manager') return;
-        setEditingShift(shift);
-        setIsModalReadOnly(false);
-        setIsModalOpen(true);
-    };
-
-    const handleViewShift = (shift: Shift) => {
-        setEditingShift(shift);
-        setIsModalReadOnly(true); // Enable Read Only
-        setIsModalOpen(true);
-    };
-
-    const handleSaveShift = (shiftData: Shift | Shift[]) => {
-        const dataArray = Array.isArray(shiftData) ? shiftData : [shiftData];
-        const nextShifts = [...shifts];
-
-        dataArray.forEach(newItem => {
-            const index = nextShifts.findIndex(s => s.id === newItem.id);
-            if (index >= 0) {
-                nextShifts[index] = newItem; // Update
-            } else {
-                nextShifts.push(newItem); // Create
-            }
-        });
-        setShifts(nextShifts);
-        persistData({ shifts: nextShifts });
-    };
-
-    const handleDeleteShift = (id: string) => {
-        const nextShifts = shifts.filter(s => s.id !== id);
-        setShifts(nextShifts);
-        persistData({ shifts: nextShifts });
-    };
-
-    const handleToggleTask = (shiftId: string, taskId: string, completerId?: string) => {
-        const shift = shifts.find(s => s.id === shiftId);
-        const task = shift?.tasks.find(t => t.id === taskId);
-        const actorId = currentEmployeeId;
-        const actualCompleterId = completerId || currentEmployeeId;
-
-        // Clone notifications to append new one
-        let nextNotifications = [...notifications];
-
-        // Logic for Notification
-        try {
-            if (task && !task.isCompleted && shift) {
-                const completer = employees.find(e => e.id === actualCompleterId);
-                const shiftOwner = employees.find(e => e.id === shift.employeeId);
-
-                // 1. Notification for CEO/Manager (New Feature)
-                if (completer) {
-                     const managerNotif: Notification = {
-                         id: generateUUID(),
-                         type: 'task_completion',
-                         title: `任務完成回報`,
-                         message: `${completer.name} 已完成任務：${task.description}`,
-                         timestamp: Date.now(),
-                         isRead: false,
-                         relatedShiftId: shiftId
-                     };
-                     // Add new notification to the top
-                     nextNotifications = [managerNotif, ...nextNotifications];
-                }
-
-                // 2. Notification for Peer Support (Help Received)
-                if (completer && shiftOwner && actualCompleterId !== shift.employeeId) {
-                     const helpNotif: Notification = {
-                         id: generateUUID(),
-                         type: 'help_received',
-                         title: `夥伴協助完成了任務`,
-                         message: `${completer.name} 協助完成了您的任務：${task.description}`,
-                         timestamp: Date.now() + 1, // Ensure unique timestamp order
-                         isRead: false,
-                         relatedShiftId: shiftId
-                     };
-                     nextNotifications = [helpNotif, ...nextNotifications];
-                }
-            }
-        } catch (error) { console.error(error); }
-
-        const nextShifts = shifts.map(s => {
-            if (s.id !== shiftId) return s;
-            return {
-                ...s,
-                tasks: (s.tasks || []).map(t => {
-                    if (t.id !== taskId) return t;
-                    const isNowCompleted = !t.isCompleted;
-                    return { 
-                        ...t, 
-                        isCompleted: isNowCompleted,
-                        completedBy: isNowCompleted ? actualCompleterId : undefined
-                    };
-                })
-            };
-        });
-        setShifts(nextShifts);
-        persistData({ shifts: nextShifts, notifications: nextNotifications });
-    };
-
-    const navigateWeek = (direction: 'prev' | 'next') => {
-        setCurrentDate(curr => direction === 'next' ? addWeeks(curr, 1) : subWeeks(curr, 1));
-    };
-
-    // Derived State
-    const currentEmployee = employees.find(e => e.id === currentEmployeeId);
-    const unreadNotifications = notifications.filter(n => !n.isRead).length;
-    const unreadFeedbacks = feedbacks.filter(f => !f.isRead).length;
+    const myNotifications = useMemo(() => {
+        if (userRole === 'manager') return notifications.filter(n => n.targetEmployeeId === 'manager');
+        return notifications.filter(n => n.targetEmployeeId === currentEmployeeId);
+    }, [notifications, userRole, currentEmployeeId]);
 
     if (!isLoggedIn) {
-        return (
-            <LoginScreen 
-                employees={employees} 
-                ceoPasswordHash={ceoPassword} 
-                employeePasswords={employeePasswords}
-                onLogin={handleLogin}
-                onResetPassword={handleResetPassword}
-            />
-        );
+        return <LoginScreen employees={employees} ceoPasswordHash={localStorage.getItem('sm_ceo_pwd') || '1234'} employeePasswords={employees.reduce((acc, curr) => ({...acc, [curr.id]: curr.password || '1234'}), {})} onLogin={handleLogin} onResetPassword={() => { if (window.confirm("重置管理密碼為 1234？")) { localStorage.setItem('sm_ceo_pwd', '1234'); window.location.reload(); } }} />;
     }
-
-    const renderHeaderActions = () => {
-        if (userRole === 'manager') {
-            return (
-                <div className="flex items-center gap-2">
-                    <div className="bg-[#064e3b] bg-opacity-20 border border-[#064e3b]/30 rounded-lg flex p-1 mr-2 text-white hidden sm:flex">
-                        <button onClick={() => navigateWeek('prev')} className="p-1 hover:bg-[#064e3b]/40 rounded">
-                            <ChevronLeft size={20} />
-                        </button>
-                        <span className="px-3 py-1 text-sm font-medium min-w-[120px] text-center">
-                            {format(currentDate, 'yyyy年 M月')}
-                        </span>
-                        <button onClick={() => navigateWeek('next')} className="p-1 hover:bg-[#064e3b]/40 rounded">
-                            <ChevronRight size={20} />
-                        </button>
-                    </div>
-
-                    {/* Cloud/Sync Status Button */}
-                    <button
-                        onClick={
-                            // If hardcoded ID is present, we always manually sync.
-                            // If not, we open settings to let user input ID.
-                            (APP_PANTRY_ID || systemSettings.isCloudSyncEnabled) 
-                                ? () => handleManualSync(false) 
-                                : () => setIsSettingsOpen(true)
-                        }
-                        disabled={isSyncing}
-                        className={`p-2 rounded-full transition-colors mr-1 flex items-center justify-center relative ${systemSettings.isCloudSyncEnabled ? 'text-emerald-300 hover:text-white hover:bg-emerald-800' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                        title={systemSettings.isCloudSyncEnabled ? `雲端同步：已啟用 ${lastSyncedTime ? `(上次同步: ${format(lastSyncedTime, 'HH:mm')})` : ''}` : "雲端同步：未啟用 (點擊設定)"}
-                    >
-                        {isSyncing ? <RefreshCw size={20} className="animate-spin" /> : (systemSettings.isCloudSyncEnabled ? <Cloud size={20} /> : <CloudOff size={20} />)}
-                    </button>
-
-                    <button onClick={() => setIsStatsOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="工時薪資統計">
-                        <Calculator size={20} />
-                    </button>
-
-                    <button onClick={() => setIsEmployeeManagerOpen(true)} className="p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴資料管理">
-                        <Users size={20} />
-                    </button>
-
-                    <button onClick={() => setIsFeedbackModalOpen(true)} className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors mr-1" title="夥伴留言">
-                        <MessageSquareQuote size={20} />
-                        {unreadFeedbacks > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border border-[#064e3b]"></span>}
-                    </button>
-
-                    <div className="relative mr-2" ref={notificationRef}>
-                        <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-white hover:bg-[#ffffff20] rounded-full transition-colors">
-                            <Bell size={20} />
-                            {unreadNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#064e3b]"></span>}
-                        </button>
-                        {/* Notification Dropdown */}
-                        {isNotificationOpen && (
-                            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                                <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50">
-                                    <h4 className="font-bold text-gray-700 text-sm">通知中心 ({unreadNotifications})</h4>
-                                    <div className="flex gap-2">
-                                        {notifications.length > 0 && <button onClick={handleClearNotifications} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}
-                                        {unreadNotifications > 0 && <button onClick={handleMarkAllRead} className="text-xs text-[#064e3b] hover:underline flex items-center gap-1"><Check size={12} /> 全部已讀</button>}
-                                    </div>
-                                </div>
-                                <div className="max-h-80 overflow-y-auto">
-                                    {notifications.length === 0 ? <div className="py-8 text-center text-gray-400 text-sm">目前沒有新通知</div> : (
-                                        <div className="divide-y divide-gray-100">
-                                            {notifications.map(notif => (
-                                                <div key={notif.id} onClick={() => handleMarkAsRead(notif.id)} className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.isRead ? 'bg-blue-50/50' : ''}`}>
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <span className={`text-sm font-bold ${!notif.isRead ? 'text-[#064e3b]' : 'text-gray-600'}`}>{notif.title}</span>
-                                                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">{format(notif.timestamp, 'MM/dd HH:mm')}</span>
-                                                    </div>
-                                                    <p className={`text-xs ${!notif.isRead ? 'text-gray-800 font-medium' : 'text-gray-500'} break-words`}>{notif.message}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex items-center gap-1 bg-[#ffffff10] rounded-lg p-1 border border-[#ffffff20]">
-                        <button onClick={handleChangePassword} className="flex items-center gap-2 text-sm font-medium text-white/90 hover:text-white px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors" title="更改密碼">
-                            <Settings size={16} />
-                        </button>
-                        <div className="w-px h-4 bg-white/20 mx-1"></div>
-                        <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-[#fca5a5] hover:text-red-300 px-3 py-1.5 rounded hover:bg-[#ffffff20] transition-colors" title="登出系統">
-                            <LogOut size={16} />
-                        </button>
-                    </div>
-                </div>
-            );
-        } else {
-            return null; 
-        }
-    };
 
     return (
         <Layout 
-            title={userRole === 'manager' ? "營運總覽" : "夥伴專區"}
-            actions={renderHeaderActions()}
+            title={userRole === 'manager' ? "管理後台" : "夥伴專區"} 
+            actions={
+                <div className="flex items-center gap-1 sm:gap-2">
+                    <div className="flex items-center mr-2">
+                        {syncStatus === 'syncing' ? <RefreshCw size={14} className="text-white animate-spin opacity-50"/> : syncStatus === 'error' ? <CloudOff size={16} className="text-red-400"/> : <CloudCheck size={16} className="text-emerald-400"/>}
+                    </div>
+                    <button onClick={() => setIsNotifDrawerOpen(true)} className="relative p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
+                        <Bell size={18} />
+                        {myNotifications.some(n => !n.isRead) && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#064e3b]"></span>}
+                    </button>
+                    {userRole === 'manager' && (
+                        <>
+                            <div className="flex items-center bg-white/10 rounded-xl px-1 py-1 border border-white/20">
+                                <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-1 hover:text-[#fbbf24]"><ChevronLeft size={18} /></button>
+                                <span className="px-1 text-[10px] sm:text-sm font-black whitespace-nowrap">{format(currentDate, 'yyyy / M月')}</span>
+                                <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-1 hover:text-[#fbbf24]"><ChevronRight size={18} /></button>
+                            </div>
+                            <button onClick={() => setIsFeedbackModalOpen(true)} className="p-2 bg-white/10 hover:bg-[#fbbf24] hover:text-[#78350f] rounded-xl transition-all"><MessageSquareQuote size={18} /></button>
+                            <button onClick={() => setIsStatsOpen(true)} className="p-2 bg-white/10 hover:bg-[#fbbf24] hover:text-[#78350f] rounded-xl transition-all"><Calculator size={18} /></button>
+                            <button onClick={() => setIsCeoChangePwdOpen(true)} className="p-2 bg-white/10 hover:bg-[#fbbf24] hover:text-[#78350f] rounded-xl transition-all" title="修改管理密碼"><Key size={18} /></button>
+                        </>
+                    )}
+                    <button onClick={handleLogout} className="p-2 bg-white/10 hover:bg-red-500 rounded-xl transition-all"><LogOut size={18} /></button>
+                </div>
+            }
         >
             {userRole === 'manager' ? (
-                <>
-                    <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="animate-in fade-in duration-500">
+                    <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                         <div>
-                            <h2 className="text-2xl font-bold text-[#44403c]">營地排班表</h2>
-                            <p className="text-[#78716c]">管理營地運作，分配夥伴任務與職責。</p>
+                            <div className="flex items-center gap-2 text-[#d97706] mb-1"><Sparkles size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Executive Dashboard</span></div>
+                            <h2 className="text-2xl sm:text-3xl font-black text-[#44403c]">營地指揮中心</h2>
                         </div>
-                        <div className="flex gap-2">
-                             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-                            <div className="flex items-center gap-1 bg-amber-100 rounded-lg p-1 border border-amber-200">
-                                <button onClick={handleExportData} className="p-2 text-amber-700 hover:bg-amber-200 rounded" title="備份資料">
-                                    <Download size={18} />
-                                </button>
-                                <button onClick={handleImportClick} className="p-2 text-amber-700 hover:bg-amber-200 rounded" title="還原資料">
-                                    <Upload size={18} />
-                                </button>
-                            </div>
-                            
-                            <button 
-                                onClick={() => handleAddShift(format(new Date(), 'yyyy-MM-dd'))}
-                                className="bg-[#064e3b] hover:bg-[#065f46] text-white px-5 py-2.5 rounded-lg font-medium shadow-md transition-all flex items-center gap-2"
-                            >
-                                <Tent size={18} />
-                                <span className="hidden sm:inline">新增排班</span>
-                                <span className="sm:hidden">排班</span>
-                            </button>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <button onClick={() => setIsEmployeeManagerOpen(true)} className="flex-1 sm:flex-none bg-white border border-[#d6d3d1] text-[#44403c] px-4 py-3 rounded-2xl font-bold hover:bg-gray-50 flex items-center justify-center gap-2"><Users size={18}/> 夥伴管理</button>
+                            <button onClick={() => { setModalDate(format(new Date(), 'yyyy-MM-dd')); setEditingShift(undefined); setIsModalOpen(true); }} className="flex-1 sm:flex-none bg-[#064e3b] text-white px-6 py-3 rounded-2xl font-black shadow-lg hover:bg-[#065f46] flex items-center justify-center gap-2"><Tent size={20} /> 快速排班</button>
                         </div>
                     </div>
-
-                    <CalendarView 
-                        currentDate={currentDate}
-                        shifts={shifts}
-                        employees={employees} // Pass state
-                        onAddShift={handleAddShift}
-                        onEditShift={handleEditShift}
-                    />
-                    
-                    {/* ... (Keep existing employee summary section) ... */}
-                    <div className="mt-8 bg-white p-6 rounded-xl border border-[#e7e5e4] shadow-sm">
-                        <h3 className="text-lg font-bold text-[#44403c] mb-4 flex items-center gap-2">
-                            <Users size={20} className="text-[#d97706]" /> 營地夥伴概況
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {employees.map(emp => {
-                                const shiftCount = shifts.filter(s => s.employeeId === emp.id).length;
-                                return (
-                                    <div key={emp.id} className="flex flex-col items-center p-4 rounded-xl border border-[#e7e5e4] bg-[#fafaf9] hover:border-[#d97706] transition-colors">
-                                        <img src={emp.avatar} alt={emp.name} className="w-14 h-14 rounded-full mb-3 shadow-sm" />
-                                        <div className="text-center">
-                                            <div className="font-bold text-[#44403c]">{emp.name}</div>
-                                            <div className="text-xs text-[#78716c] mt-1 bg-[#e7e5e4] px-2 py-0.5 rounded-full">{shiftCount} 個排班</div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <ShiftModal
-                        isOpen={isModalOpen}
-                        onClose={() => setIsModalOpen(false)}
-                        onSave={handleSaveShift}
-                        onDelete={handleDeleteShift}
-                        initialDate={modalDate}
-                        employees={employees} 
-                        existingShift={editingShift}
-                        taskCategories={taskCategories}
-                        onUpdateTaskCategories={handleUpdateTaskCategories}
-                        shifts={shifts}
-                        readOnly={isModalReadOnly}
-                        currentEmployeeId={currentEmployeeId}
-                    />
-
-                    <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} currentDate={currentDate} shifts={shifts} employees={employees} />
-                    <FeedbackModal isOpen={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} feedbacks={feedbacks} employees={employees} onMarkAsRead={handleFeedbackMarkAsRead} onDeleteFeedback={handleDeleteFeedback} onDeleteAllRead={handleDeleteAllReadFeedbacks} onUpdateFeedback={handleUpdateFeedback}/>
-                    <EmployeeManagerModal isOpen={isEmployeeManagerOpen} onClose={() => setIsEmployeeManagerOpen(false)} employees={employees} onUpdateEmployees={handleUpdateEmployees} />
-                    <SystemSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={systemSettings} onSaveSettings={handleSaveSystemSettings} />
-                </>
+                    <CalendarView currentDate={currentDate} shifts={shifts} employees={employees} onAddShift={(d) => {setModalDate(d); setEditingShift(undefined); setIsModalOpen(true);}} onEditShift={(s) => {setEditingShift(s); setIsModalOpen(true);}} />
+                </div>
             ) : (
                 currentEmployee && (
-                    <>
-                    <EmployeePortal
-                        employee={currentEmployee}
-                        shifts={shifts}
-                        onToggleTask={handleToggleTask}
-                        onLogout={handleLogout}
-                        onChangePassword={handleEmployeeChangePassword}
-                        onSendFeedback={handleSendFeedback}
-                        onViewShift={handleViewShift}
+                    <EmployeePortal 
+                        employee={currentEmployee} shifts={shifts} 
+                        onToggleTask={(sid, tid, cid) => {
+                            const shift = shifts.find(s => s.id === sid);
+                            if (!shift) return;
+                            const updatedTasks = shift.tasks.map(t => t.id === tid ? { ...t, isCompleted: !t.isCompleted, completedBy: cid } : t);
+                            handleSaveShift({ ...shift, tasks: updatedTasks });
+                        }} 
+                        onLogout={handleLogout} 
+                        onChangePassword={(newPwd) => {
+                            const updated = employees.map(e => e.id === currentEmployeeId ? { ...e, password: newPwd } : e);
+                            setEmployees(updated);
+                            persistData({ employees: updated });
+                            alert("密碼變更成功！下回登入請使用新密碼。");
+                        }} 
+                        onSendFeedback={(c) => {
+                            const nf = { id: generateUUID(), employeeId: currentEmployeeId!, content: c, date: new Date().toISOString(), isRead: false };
+                            const nfs = [nf, ...feedbacks];
+                            setFeedbacks(nfs);
+                            persistData({ feedbacks: nfs });
+                        }} 
+                        onViewShift={(s) => { setEditingShift(s); setIsModalOpen(true); }}
+                        onUpdateAvatar={(newAvatar) => {
+                            const updated = employees.map(e => e.id === currentEmployeeId ? { ...e, avatar: newAvatar } : e);
+                            setEmployees(updated);
+                            persistData({ employees: updated });
+                        }}
                         allEmployees={employees}
+                        notifications={myNotifications}
+                        onMarkNotificationRead={(nid) => {
+                            const next = notifications.map(n => n.id === nid ? { ...n, isRead: true } : n);
+                            setNotifications(next);
+                            persistData({ notifications: next });
+                        }}
                     />
-                    <ShiftModal
-                        isOpen={isModalOpen}
-                        onClose={() => setIsModalOpen(false)}
-                        onSave={() => {}} 
-                        onDelete={() => {}} 
-                        initialDate={modalDate}
-                        employees={employees} 
-                        existingShift={editingShift}
-                        taskCategories={taskCategories}
-                        onUpdateTaskCategories={() => {}} 
-                        shifts={shifts}
-                        readOnly={true}
-                        currentEmployeeId={currentEmployeeId}
-                    />
-                    </>
                 )
             )}
+
+            {/* Notification Drawer */}
+            {isNotifDrawerOpen && (
+                <div className="fixed inset-0 z-[60] flex justify-end">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsNotifDrawerOpen(false)}></div>
+                    <div className="relative w-full max-w-sm bg-white h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
+                        <div className="p-5 border-b flex justify-between items-center bg-[#f5f5f4]">
+                            <h3 className="font-black flex items-center gap-2 text-[#064e3b]"><Bell size={18} /> 通知中心</h3>
+                            <button onClick={() => setIsNotifDrawerOpen(false)} className="p-2 hover:bg-gray-200 rounded-full"><X size={20} /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            {myNotifications.length === 0 ? <div className="py-20 text-center text-gray-400 italic font-bold">目前無通知</div> : 
+                                myNotifications.map(notif => (
+                                    <div key={notif.id} className={`p-4 rounded-xl border transition-all ${notif.isRead ? 'bg-gray-50 opacity-60' : 'bg-emerald-50 border-emerald-100 shadow-sm'}`} 
+                                        onClick={() => {
+                                            const next = notifications.map(n => n.id === notif.id ? { ...n, isRead: true } : n);
+                                            setNotifications(next);
+                                            persistData({ notifications: next });
+                                        }}>
+                                        <div className="flex gap-3">
+                                            <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 h-fit"><Bell size={18} /></div>
+                                            <div className="flex-1">
+                                                <div className="text-sm font-black text-gray-800">{notif.title}</div>
+                                                <p className="text-xs text-gray-600 mt-1 font-bold">{notif.message}</p>
+                                                <div className="text-[10px] text-gray-400 mt-2 font-black">{format(notif.timestamp, 'MM/dd HH:mm')}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            }
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CEO Change Password Modal */}
+            {isCeoChangePwdOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl animate-in zoom-in-95 border-t-8 border-[#d97706]">
+                        <h3 className="font-black text-gray-800 mb-4 text-center">修改執行長密碼</h3>
+                        <input type="text" value={newCeoPwd} onChange={e=>setNewCeoPwd(e.target.value)} placeholder="輸入新密碼" className="w-full p-3 border rounded-xl mb-4 font-bold text-center tracking-widest text-lg" />
+                        <div className="flex gap-2">
+                            <button onClick={() => {setIsCeoChangePwdOpen(false); setNewCeoPwd('');}} className="flex-1 py-2 text-gray-400 font-bold hover:bg-gray-50 rounded-xl">取消</button>
+                            <button onClick={() => {
+                                if(newCeoPwd.length < 4) return alert('密碼太短了，請至少輸入4位數！');
+                                localStorage.setItem('sm_ceo_pwd', newCeoPwd);
+                                alert("管理密碼修改成功！");
+                                setIsCeoChangePwdOpen(false);
+                                setNewCeoPwd('');
+                            }} className="flex-1 py-2 bg-[#d97706] text-white rounded-xl font-black shadow-lg hover:bg-[#b45309]">確認修改</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <ShiftModal 
+                isOpen={isModalOpen} 
+                onClose={() => setIsModalOpen(false)} 
+                onSave={handleSaveShift} 
+                onDelete={(id) => {const next = shifts.filter(s => s.id !== id); setShifts(next); persistData({shifts: next});}} 
+                initialDate={modalDate} 
+                employees={employees} 
+                existingShift={editingShift} 
+                taskCategories={taskCategories} 
+                onUpdateTaskCategories={(cats) => {setTaskCategories(cats); persistData({categories: cats});}} 
+                shifts={shifts} 
+                currentEmployeeId={currentEmployeeId} 
+                userRole={userRole}
+                onUpdateEmployee={(updatedEmp) => {
+                    const nextEmps = employees.map(e => e.id === updatedEmp.id ? updatedEmp : e);
+                    setEmployees(nextEmps);
+                    persistData({ employees: nextEmps });
+                }}
+            />
+            <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} currentDate={currentDate} shifts={shifts} employees={employees} />
+            <FeedbackModal isOpen={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} feedbacks={feedbacks} employees={employees} onMarkAsRead={(id) => {const next = feedbacks.map(f => f.id === id ? {...f, isRead: true} : f); setFeedbacks(next); persistData({feedbacks: next});}} onDeleteFeedback={(id) => {const next = feedbacks.filter(f => f.id !== id); setFeedbacks(next); persistData({feedbacks: next});}} onUpdateFeedback={(id, upd) => {const next = feedbacks.map(f => f.id === id ? {...f, ...upd} : f); setFeedbacks(next); persistData({feedbacks: next});}} />
+            <EmployeeManagerModal isOpen={isEmployeeManagerOpen} onClose={() => setIsEmployeeManagerOpen(false)} employees={employees} onUpdateEmployees={(e) => {setEmployees(e); persistData({employees: e});}} />
         </Layout>
     );
 };

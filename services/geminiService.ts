@@ -1,15 +1,12 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-
-// Safely initialize client only if key exists, otherwise we'll handle errors gracefully
-let ai: GoogleGenAI | null = null;
-if (apiKey) {
-    ai = new GoogleGenAI({ apiKey });
-}
-
+// Fix: Removed top-level initialization and configured the service to initialize the client inside the function call for more reliability.
 export const generateTasksForRole = async (role: string, startTime: string, endTime: string): Promise<string[]> => {
-    if (!ai) {
+    // API key must be obtained from process.env.API_KEY as per guidelines.
+    const apiKey = process.env.API_KEY;
+    
+    if (!apiKey) {
         console.warn("API Key missing, returning mock data");
         return [
             "檢查庫存水位",
@@ -21,12 +18,16 @@ export const generateTasksForRole = async (role: string, startTime: string, endT
     }
 
     try {
+        // Fix: Use the standard initialization pattern for GoogleGenAI.
+        const ai = new GoogleGenAI({ apiKey });
+        
         const prompt = `
         請為職位 "${role}" 在 ${startTime} 到 ${endTime} 的班次生成 5 個具體、可執行的簡短工作清單（繁體中文）。
         這些任務應符合一般商業環境中該職位的職責。
         只回傳字串陣列 (JSON array of strings)。
         `;
 
+        // Fix: Call generateContent directly on ai.models with correct model name and prompt.
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: prompt,
@@ -41,6 +42,7 @@ export const generateTasksForRole = async (role: string, startTime: string, endT
             }
         });
 
+        // Fix: Correctly access the response text using the .text property (not a method).
         const text = response.text;
         if (!text) return [];
         
